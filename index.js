@@ -107,20 +107,26 @@ prototype._write = function (chunk, encoding, callback) {
               new Error('no tree matching ' + name + '@' + range)
             )
           } else {
-            var matchingTree = find(records, function (record) {
+            var matching = find(records, function (record) {
               return record.version === max
             })
-            .tree
-            done(null, matchingTree.concat({
-              name: name,
-              version: max,
-              links: matchingTree.map(function (dependency) {
-                return {
-                  name: dependency.name,
-                  version: dependency.version
+            var completeTree = mergeTrees(
+              matching.tree,
+              [
+                {
+                  name: name,
+                  version: max,
+                  links: matching.tree.map(function (dependency) {
+                    return {
+                      name: dependency.name,
+                      version: dependency.version
+                    }
+                  })
                 }
-              })
-            }))
+              ]
+            )
+            completeTree.sort(compareDependencies)
+            done(null, completeTree)
           }
         }
       })
