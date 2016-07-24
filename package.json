@@ -7,7 +7,9 @@
     "array-find": "^1.0.0",
     "async.map": "^0.5.2",
     "lexicographic-integer": "^1.1.0",
-    "semver": "^5.2.0"
+    "merge-flat-package-trees": "^1.1.0",
+    "semver": "^5.2.0",
+    "update-flat-package-tree": "^1.1.0"
   },
   "devDependencies": {
     "from2-array": "0.0.4",

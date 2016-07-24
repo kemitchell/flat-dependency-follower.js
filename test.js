@@ -15,7 +15,7 @@ tape('x -> y', function (test) {
       test.equal(sequence, 2, 'sequence is 2')
       test.deepEqual(
         tree,
-        [{name: 'y', version: '1.0.0', links: []}],
+        [{name: 'y', version: '1.0.0', range: '^1.0.0', links: []}],
         'yields tree'
       )
       test.end()
@@ -39,7 +39,8 @@ tape('x -> y -> z', function (test) {
           {
             name: 'y',
             version: '1.0.0',
-            links: [{name: 'z', version: '1.0.0'}]
+            range: '^1.0.0',
+            links: [{name: 'z', version: '1.0.0', range: '^1.0.0'}]
           },
           {name: 'z', version: '1.0.0', links: []}
         ],
@@ -79,10 +80,10 @@ tape('y@1.0.0 ; x -> y@^1.0.0 ; y@1.0.1', function (test) {
           test.ifError(error, 'no error')
           test.deepEqual(
             tree,
-            [{name: 'y', version: '1.0.0', links: []}],
+            [{name: 'y', version: '1.0.0', range: '^1.0.0', links: []}],
             'original x depends on y@1.0.0'
           )
-          test.end()
+          done()
         })
       },
       function (done) {
@@ -90,10 +91,10 @@ tape('y@1.0.0 ; x -> y@^1.0.0 ; y@1.0.1', function (test) {
           test.ifError(error, 'no error')
           test.deepEqual(
             tree,
-            [{name: 'y', version: '1.0.1', links: []}],
+            [{name: 'y', version: '1.0.1', range: '^1.0.0', links: []}],
             'updated x depends on y@1.0.1'
           )
-          test.end()
+          done()
         })
       }
     ], function (error, done) {
