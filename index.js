@@ -63,6 +63,7 @@ prototype._write = function (chunk, encoding, callback) {
         trees.forEach(function (tree) {
           combinedTree = mergeTrees(combinedTree, tree)
         })
+        combinedTree.sort(compareDependencies)
         batch.push({
           type: 'put',
           key: encode(
@@ -185,7 +186,7 @@ function mergeTrees (a, b) {
       merged.push(element)
     }
   })
-  return merged.sort(compareDependencies)
+  return merged
 }
 
 function compareDependencies (a, b) {
