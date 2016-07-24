@@ -66,7 +66,7 @@ tape('x -> y -> z at earlier sequence', function (test) {
   })
 })
 
-tape('y@1.0.0 ; x -> y@^1.0.0 ; y@1.0.1', function (test) {
+tape.only('y@1.0.0 ; x -> y@^1.0.0 ; y@1.0.1', function (test) {
   var follower = testFollower([
     {name: 'y', versions: {'1.0.0': {dependencies: {}}}},
     {name: 'x', versions: {'1.0.0': {dependencies: {y: '^1.0.0'}}}},
