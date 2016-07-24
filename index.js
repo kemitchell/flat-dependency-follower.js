@@ -26,7 +26,15 @@ prototype._write = function (chunk, encoding, callback) {
   var sequence = chunk.sequence
   var batch = []
   function writeBatch () {
-    console.log('%s is %j', 'batch', batch)
+    batch.forEach(function (operation) {
+      if (!operation.hasOwnProperty('type')) {
+        operation.type = 'put'
+        if (!operation.hasOwnProperty('value')) {
+          operation.value = ''
+        }
+      }
+    })
+    console.log('%s is %j\n\n', 'batch', batch)
     self._levelup.batch(batch, function (error) {
       if (error) {
         callback(error)
@@ -39,149 +47,221 @@ prototype._write = function (chunk, encoding, callback) {
     })
   }
   Object.keys(chunk.versions).forEach(function (publishedVersion) {
-    var dependencies = chunk.versions[publishedVersion].dependencies
-    var dependencyPairs = []
-    Object.keys(dependencies).forEach(function (dependencyName) {
-      var dependencyRange = dependencies[dependencyName]
-      dependencyPairs.push({
-        name: dependencyName,
-        range: dependencyRange
-      })
+    var ranges = chunk.versions[publishedVersion].dependencies
+
+    batch.push({
+      key: encode(
+        'ranges',
+        publishedName,
+        publishedVersion,
+        pack(sequence)
+      ),
+      value: ranges
+    })
+
+    Object.keys(ranges).forEach(function (dependencyName) {
       batch.push({
-        type: 'put',
         key: encode(
           'dependent',
           dependencyName,
           pack(sequence),
-          dependencyRange,
-          publishedName, publishedVersion
-        ),
-        value: ''
+          ranges[dependencyName],
+          publishedName,
+          publishedVersion
+        )
       })
     })
-    asyncMap(dependencyPairs, findTree, function (error, trees) {
+
+    self._treeFor(
+      sequence, publishedName, publishedVersion, ranges,
+      function (error, tree) {
+        if (error) {
+          callback(error)
+        } else {
+          console.log('%s is %j', 'tree', tree)
+          batch.push({
+            key: encode(
+              'tree',
+              publishedName,
+              pack(sequence),
+              publishedVersion
+            ),
+            value: tree
+          })
+
+          self._findDependents(
+            sequence, publishedName, publishedVersion,
+            function (error, dependents) {
+              console.log(
+                '%s of %s@%s are %j',
+                'dependents', publishedName, publishedVersion, dependents
+              )
+              if (error) {
+                callback(error)
+              } else {
+                asyncMap(
+                  dependents,
+                  function (record, done) {
+                    var dependent = record.dependent
+                    self._findRanges(
+                      dependent.name, dependent.version, sequence,
+                      function (error, ranges) {
+                        if (error) {
+                          callback(error)
+                        } else {
+                          if (ranges === null) {
+                            callback(
+                              new Error(
+                                'no ranges for ' +
+                                dependent.name + '@' + dependent.version
+                              )
+                            )
+                          } else {
+                            self._treeFor(
+                              sequence,
+                              dependent.name,
+                              dependent.version,
+                              ranges,
+                              function (error, newTree) {
+                                console.log('%s is %j', 'newTree', newTree)
+                                if (error) {
+                                  done(error)
+                                } else {
+                                  done(null, {
+                                    name: dependent.name,
+                                    version: dependent.version,
+                                    tree: newTree
+                                  })
+                                }
+                              }
+                            )
+                          }
+                        }
+                      }
+                    )
+                  },
+                  function (error, newDependentTrees) {
+                    if (error) {
+                      callback(error)
+                    } else {
+                      newDependentTrees.forEach(function (record) {
+                        batch.push({
+                          key: encode(
+                            'tree',
+                            record.name,
+                            pack(sequence),
+                            record.version
+                          ),
+                          value: record.tree
+                        })
+                      })
+                      writeBatch()
+                    }
+                  }
+                )
+              }
+            }
+          )
+        }
+      }
+    )
+  })
+}
+
+prototype._treeFor = function (
+  sequence, name, version, ranges, callback
+) {
+  var self = this
+  asyncMap(
+    Object.keys(ranges).map(function (dependencyName) {
+      return {
+        name: dependencyName,
+        range: ranges[dependencyName]
+      }
+    }),
+    function (dependency, done) {
+      self._findMaxSatisfying(
+        sequence, dependency.name, dependency.range, done
+      )
+    },
+    function (error, dependencyTrees) {
       if (error) {
         callback(error)
       } else {
         var combinedTree = []
-        trees.forEach(function (tree) {
+        dependencyTrees.forEach(function (tree) {
           combinedTree = mergeTrees(combinedTree, tree)
         })
         combinedTree.sort(compareDependencies)
-        batch.push({
-          type: 'put',
-          key: encode(
-            'tree',
-            publishedName,
-            pack(sequence),
-            publishedVersion
-          ),
-          value: combinedTree
-        })
-        self._findDependents(
-          sequence, publishedName, publishedVersion,
-          function (error, dependents) {
-            console.log(
-              '%s of %s@%s are %j',
-              'dependents', publishedName, publishedVersion, dependents
-            )
-            if (error) {
-              callback(error)
-            } else {
-              asyncMap(
-                dependents,
-                function (record, done) {
-                  var dependent = record.dependent
-                  self._getTree(
-                    dependent.name,
-                    record.sequence,
-                    dependent.version,
-                    function (error, oldTree) {
-                      if (error) {
-                        done(error)
-                      } else {
-                        done(null, {
-                          name: dependent.name,
-                          version: dependent.version,
-                          tree: oldTree
-                        })
-                      }
-                    }
-                  )
-                },
-                function (error, newDependentTrees) {
-                  if (error) {
-                    callback(error)
-                  } else {
-                    newDependentTrees.forEach(function (record) {
-                      batch.push({
-                        type: 'put',
-                        key: encode(
-                          'tree',
-                          record.name,
-                          pack(sequence),
-                          record.version
-                        ),
-                        value: record.tree
-                      })
-                    })
-                    writeBatch()
-                  }
-                }
-              )
-            }
-          }
-        )
+        callback(null, combinedTree)
       }
-    })
-    function findTree (pair, done) {
-      var name = pair.name
-      var range = pair.range
-      self._findTrees(sequence, name, function (error, records) {
-        if (error) {
-          callback(error)
-        } else if (records.length === 0) {
-          done(new Error('no trees for ' + name + '@' + range))
-        } else {
-          var max = semver.maxSatisfying(
-            records.map(function (record) {
-              return record.version
-            }),
-            range
-          )
-          if (max === null) {
-            done(
-              new Error('no tree matching ' + name + '@' + range)
-            )
-          } else {
-            var matching = find(records, function (record) {
-              return record.version === max
-            })
-            var completeTree = mergeTrees(
-              matching.tree,
-              [
-                {
-                  name: name,
-                  version: max,
-                  links: matching.tree.map(function (dependency) {
-                    return {
-                      name: dependency.name,
-                      version: dependency.version
-                    }
-                  })
-                }
-              ]
-            )
-            completeTree.sort(compareDependencies)
-            done(null, completeTree)
-          }
-        }
+    }
+  )
+}
+
+var ZERO = pack(0)
+
+prototype._findMaxSatisfying = function (
+  sequence, name, range, callback
+) {
+  this._findTrees(sequence, name, function (error, records) {
+    if (error) {
+      callback(error)
+    } else {
+      var versions = records.map(function (record) {
+        return record.version
       })
+      var max = semver.maxSatisfying(versions, range)
+      if (max === null) {
+        callback(null, null)
+      } else {
+        var matching = find(records, function (record) {
+          return record.version === max
+        })
+        var completeTree = mergeTrees(
+          matching.tree,
+          [
+            {
+              name: name,
+              version: max,
+              links: matching.tree.map(function (dependency) {
+                return {
+                  name: dependency.name,
+                  version: dependency.version
+                }
+              })
+            }
+          ]
+        )
+        callback(null, completeTree)
+      }
     }
   })
 }
 
-var ZERO = pack(0)
+prototype._findRanges = function (name, version, sequence, callback) {
+  var found = false
+  this._levelup.createReadStream({
+    gte: encode('ranges', name, version, ZERO),
+    lte: encode('ranges', name, version, pack(sequence)),
+    limit: 1,
+    reverse: true,
+    keys: false,
+    values: true
+  })
+  .once('error', function (error) {
+    callback(error)
+  })
+  .once('data', function (value) {
+    found = true
+    callback(null, value)
+  })
+  .once('end', function () {
+    if (!found) {
+      callback(null, null)
+    }
+  })
+}
 
 prototype._findTrees = function (sequence, name, callback) {
   var matches = []
