@@ -34,7 +34,7 @@ prototype._write = function (chunk, encoding, callback) {
         }
       }
     })
-    console.log('%s is %j\n\n', 'batch', batch)
+    console.log('%s is %j\n', 'batch', batch)
     self._levelup.batch(batch, function (error) {
       if (error) {
         callback(error)
@@ -74,11 +74,10 @@ prototype._write = function (chunk, encoding, callback) {
 
     self._treeFor(
       sequence, publishedName, publishedVersion, ranges,
-      function (error, tree) {
+      function (error, publishedTree) {
         if (error) {
           callback(error)
         } else {
-          console.log('%s is %j', 'tree', tree)
           batch.push({
             key: encode(
               'tree',
@@ -86,56 +85,39 @@ prototype._write = function (chunk, encoding, callback) {
               pack(sequence),
               publishedVersion
             ),
-            value: tree
+            value: publishedTree
           })
 
           self._findDependents(
             sequence, publishedName, publishedVersion,
             function (error, dependents) {
-              console.log(
-                '%s of %s@%s are %j',
-                'dependents', publishedName, publishedVersion, dependents
-              )
               if (error) {
                 callback(error)
               } else {
+                console.log('%s is %j', 'dependents', dependents)
                 asyncMap(
                   dependents,
                   function (record, done) {
                     var dependent = record.dependent
-                    self._findRanges(
-                      dependent.name, dependent.version, sequence,
-                      function (error, ranges) {
+                    self._getTree(
+                      dependent.name,
+                      sequence,
+                      dependent.version,
+                      function (error, oldTree) {
+                        console.log('%s is %j', 'oldTree', oldTree)
                         if (error) {
-                          callback(error)
+                          done(error)
                         } else {
-                          if (ranges === null) {
-                            callback(
-                              new Error(
-                                'no ranges for ' +
-                                dependent.name + '@' + dependent.version
-                              )
+                          done(null, {
+                            name: dependent.name,
+                            version: dependent.version,
+                            tree: updateTree(
+                              oldTree,
+                              publishedName,
+                              publishedVersion,
+                              publishedTree
                             )
-                          } else {
-                            self._treeFor(
-                              sequence,
-                              dependent.name,
-                              dependent.version,
-                              ranges,
-                              function (error, newTree) {
-                                console.log('%s is %j', 'newTree', newTree)
-                                if (error) {
-                                  done(error)
-                                } else {
-                                  done(null, {
-                                    name: dependent.name,
-                                    version: dependent.version,
-                                    tree: newTree
-                                  })
-                                }
-                              }
-                            )
-                          }
+                          })
                         }
                       }
                     )
@@ -219,9 +201,15 @@ prototype._findMaxSatisfying = function (
           return record.version === max
         })
         var completeTree = mergeTrees(
-          matching.tree,
+          matching.tree.map(function (dependency) {
+            if ('direct' in dependency) {
+              delete dependency.direct
+            }
+            return dependency
+          }),
           [
             {
+              direct: true,
               name: name,
               version: max,
               links: matching.tree.map(function (dependency) {
@@ -328,7 +316,6 @@ prototype._findDependents = function (
     })
   })
   .once('end', function () {
-    console.log('%s is %j', 'matches', matches)
     callback(null, matches.filter(function (match) {
       return semver.satisfies(version, match.dependency.range)
     }))
@@ -354,6 +341,10 @@ prototype.query = function (name, version, sequence, callback) {
 
 prototype.sequence = function () {
   return this._sequence
+}
+
+function updateTree (oldTree, name, version, newTree) {
+  
 }
 
 function mergeTrees (a, b) {
