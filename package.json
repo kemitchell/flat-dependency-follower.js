@@ -1,0 +1,37 @@
+{
+  "name": "flat-dependency-follower",
+  "description": "follow npm registry updates, calculating flat dependency graphs",
+  "version": "0.0.0",
+  "author": "Kyle E. Mitchell <kyle@kemitchell.com> (https://kemitchell.com/)",
+  "dependencies": {
+    "array-find": "^1.0.0",
+    "async.map": "^0.5.2",
+    "lexicographic-integer": "^1.1.0",
+    "semver": "^5.2.0"
+  },
+  "devDependencies": {
+    "from2-array": "0.0.4",
+    "istanbul": "^0.4.4",
+    "memdb": "^1.3.1",
+    "standard": "^7.1.2",
+    "tape": "^4.6.0"
+  },
+  "files": [
+    "index.js"
+  ],
+  "keywords": [
+    "dependencies",
+    "follower",
+    "npm",
+    "packages",
+    "registry"
+  ],
+  "license": "MIT",
+  "repository": "kemitchell/flat-dependency-follower.js",
+  "scripts": {
+    "lint": "standard",
+    "test": "node test.js",
+    "precoverage": "istanbul cover -- test.js",
+    "coverage": "istanbul check-coverage"
+  }
+}
