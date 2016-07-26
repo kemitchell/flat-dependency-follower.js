@@ -183,6 +183,16 @@ prototype._treeFor = function (
         function (error, result) {
           /* istanbul ignore if */
           if (error) {
+            if (error.noSatisfying) {
+              error.message = (
+                error.message + ' for ' + name + '@' + version
+              )
+              error.dependent = {
+                name: name,
+                version: version
+              }
+              error.sequence = sequence
+            }
             done(error)
           } else {
             done(null, result)
@@ -220,7 +230,15 @@ prototype._findMaxSatisfying = function (
       })
       var max = semver.maxSatisfying(versions, range)
       if (max === null) {
-        callback(null, null)
+        var satisfyingError = new Error(
+          'no package satisfying ' + name + '@' + range
+        )
+        satisfyingError.noSatisfying = true
+        satisfyingError.dependency = {
+          name: name,
+          range: range
+        }
+        callback(satisfyingError)
       } else {
         var matching = find(records, function (record) {
           return record.version === max
