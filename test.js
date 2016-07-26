@@ -104,6 +104,18 @@ tape('y@1.0.0 ; x -> y@^1.0.0 ; y@1.0.1', function (test) {
   })
 })
 
+tape('sequence number', function (test) {
+  var follower = testFollower([
+    {name: 'y', versions: {'1.0.0': {dependencies: {}}}},
+    {name: 'x', versions: {'1.0.0': {dependencies: {y: '^1.0.0'}}}},
+    {name: 'y', versions: {'1.0.1': {dependencies: {}}}}
+  ])
+  .once('finish', function () {
+    test.equal(follower.sequence(), 3)
+    test.end()
+  })
+})
+
 function testFollower (updates) {
   var store = memdb({valueEncoding: 'json'})
   var follower = Math.random() > 0.5
