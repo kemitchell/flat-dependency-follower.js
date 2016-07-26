@@ -3,11 +3,24 @@ var asyncMap = require('async.map')
 var find = require('array-find')
 var inherits = require('util').inherits
 var lexint = require('lexicographic-integer')
-var merge = require('merge-flat-package-trees')
+var mergeFlatTrees = require('merge-flat-package-trees')
 var semver = require('semver')
-var update = require('update-flat-package-tree')
+var updateFlatTree = require('update-flat-package-tree')
 
 module.exports = FlatDependencyFollower
+
+// A Note on Terminology
+//
+// Throughout this package:
+//
+// - When A depends on B, A is the "dependent", B is the "dependency".
+//
+// - A "tree" is a flattish data structure listing the dependencies that
+//   need to be installed and how they depend on one another.
+//
+// - A "range" is a node-semver range.
+//
+// - A "version" is a node-semver version.
 
 function FlatDependencyFollower (levelup) {
   if (!(this instanceof FlatDependencyFollower)) {
@@ -24,12 +37,20 @@ var prototype = FlatDependencyFollower.prototype
 
 prototype._write = function (chunk, encoding, callback) {
   var self = this
-  var publishedName = chunk.name
+  var updatedName = chunk.name
   var sequence = chunk.sequence
+
+  // `_write` prepares and executes one large batch of LevelUP
+  // operations to store computed information about the update and its
+  // consequences.
   var batch = []
+
   function writeBatch () {
     batch.forEach(function (operation) {
+      // Make operations put operations by default.
       operation.type = 'put'
+      // Set a placeholder for key-only records.  These are
+      // primarily used for indexing.
       if (!operation.hasOwnProperty('value')) {
         operation.value = ''
       }
@@ -44,36 +65,45 @@ prototype._write = function (chunk, encoding, callback) {
       }
     })
   }
-  Object.keys(chunk.versions).forEach(function (publishedVersion) {
-    var ranges = chunk.versions[publishedVersion].dependencies
 
+  // Iterate versions of the package in the update.
+  Object.keys(chunk.versions).forEach(function (updatedVersion) {
+    var ranges = chunk.versions[updatedVersion].dependencies
+
+    // Store the raw `.dependencies` object for the package.
     batch.push({
-      key: encode(
+      key: encodeKey(
         'ranges',
-        publishedName,
-        publishedVersion,
-        pack(sequence)
+        updatedName,
+        updatedVersion,
+        packInteger(sequence)
       ),
       value: ranges
     })
 
+    // Compute the flat package dependency manifest for the new package.
     self._treeFor(
-      sequence, publishedName, publishedVersion, ranges,
+      sequence, updatedName, updatedVersion, ranges,
       function (error, tree) {
         /* istanbul ignore if */
         if (error) {
           callback(error)
         } else {
+          // Store the tree.
           batch.push({
-            key: encode(
+            key: encodeKey(
               'tree',
-              publishedName,
-              pack(sequence),
-              publishedVersion
+              updatedName,
+              packInteger(sequence),
+              updatedVersion
             ),
             value: tree
           })
 
+          // Store key-only index records.  These will be used to
+          // determine that this package's tree needs to be updated when
+          // new versions of any of its dependencies---direct or
+          // indirect---come in later.
           tree.forEach(function (dependency) {
             var dependencyName = dependency.name
             var withRanges = []
@@ -95,29 +125,33 @@ prototype._write = function (chunk, encoding, callback) {
             })
             withRanges.forEach(function (range) {
               batch.push({
-                key: encode(
+                key: encodeKey(
                   'dependent',
                   dependencyName,
-                  pack(sequence),
+                  packInteger(sequence),
                   range,
-                  publishedName,
-                  publishedVersion
+                  updatedName,
+                  updatedVersion
                 )
               })
             })
           })
 
+          // Update trees for packages that directly and indirectly
+          // depend on the updated package.
           self._findDependents(
-            sequence, publishedName, publishedVersion,
+            sequence, updatedName, updatedVersion,
             function (error, dependents) {
               /* istanbul ignore if */
               if (error) {
                 callback(error)
               } else {
+                // Generate an updated tree for each dependent.
                 asyncMap(
                   dependents,
                   function (record, done) {
                     var dependent = record.dependent
+                    // Find the most current tree for the package.
                     self._findTree(
                       dependent.name,
                       dependent.version,
@@ -127,10 +161,17 @@ prototype._write = function (chunk, encoding, callback) {
                         if (error) {
                           done(error)
                         } else {
+                          // Create a tree with:
+                          //
+                          // 1. the update package
+                          // 2. the updated package's dependencies
+                          //
+                          // and use it to update the existing tree for
+                          // the dependent package.
                           var treeClone = clone(tree)
                           treeClone.push({
-                            name: publishedName,
-                            version: publishedVersion,
+                            name: updatedName,
+                            version: updatedVersion,
                             links: treeClone
                             .reduce(function (links, dependency) {
                               return dependency.range
@@ -147,10 +188,10 @@ prototype._write = function (chunk, encoding, callback) {
                           treeClone.forEach(function (dependency) {
                             delete dependency.range
                           })
-                          var updated = update(
+                          var updated = updateFlatTree(
                             result.tree,
-                            publishedName,
-                            publishedVersion,
+                            updatedName,
+                            updatedVersion,
                             treeClone
                           )
                           done(null, {
@@ -167,12 +208,13 @@ prototype._write = function (chunk, encoding, callback) {
                     if (error) {
                       callback(error)
                     } else {
+                      // Push put operations for new dependent trees.
                       newDependentTrees.forEach(function (record) {
                         batch.push({
-                          key: encode(
+                          key: encodeKey(
                             'tree',
                             record.name,
-                            pack(sequence),
+                            packInteger(sequence),
                             record.version
                           ),
                           value: record.tree
@@ -191,18 +233,25 @@ prototype._write = function (chunk, encoding, callback) {
   })
 }
 
+// Generate a tree for a package, based on the `.dependencies` object in
+// its `package.json`.
 prototype._treeFor = function (
   sequence, name, version, ranges, callback
 ) {
   var self = this
   asyncMap(
+    // Turn the Object mapping from package name to SemVer range into an
+    // Array of Objects with name and range properties.
     Object.keys(ranges).map(function (dependencyName) {
       return {
         name: dependencyName,
         range: ranges[dependencyName]
       }
     }),
+    // For each name-and-range pair...
     function (dependency, done) {
+      // ...find the dependency tree for the highest version that
+      // satisfies the range.
       self._findMaxSatisfying(
         sequence, dependency.name, dependency.range,
         function (error, result) {
@@ -225,14 +274,16 @@ prototype._treeFor = function (
         }
       )
     },
+    // Once we have trees for dependencies...
     function (error, dependencyTrees) {
       /* istanbul ignore if */
       if (error) {
         callback(error)
       } else {
+        // ...combine them to form a new tree.
         var combinedTree = []
         dependencyTrees.forEach(function (tree) {
-          combinedTree = merge(combinedTree, tree)
+          combinedTree = mergeFlatTrees(combinedTree, tree)
         })
         callback(null, combinedTree)
       }
@@ -240,20 +291,27 @@ prototype._treeFor = function (
   )
 }
 
-var ZERO = pack(0)
+var ZERO = packInteger(0)
 
+// Find the tree for the highest package version that satisfies a given
+// SemVer range.
 prototype._findMaxSatisfying = function (
   sequence, name, range, callback
 ) {
+  // Fetch all the trees for the package at the current sequence.
   this._findTrees(sequence, name, function (error, records) {
     /* istanbul ignore if */
     if (error) {
       callback(error)
     } else {
+      // Find the tree that corresponds to the highest SemVer that
+      // satisfies our target range.
       var versions = records.map(function (record) {
         return record.version
       })
       var max = semver.maxSatisfying(versions, range)
+      // If there isn't a match, yield an informative error with
+      // structured data about the failed query.
       if (max === null) {
         var satisfyingError = new Error(
           'no package satisfying ' + name + '@' + range
@@ -264,6 +322,7 @@ prototype._findMaxSatisfying = function (
           range: range
         }
         callback(satisfyingError)
+      // Have a tree for a package version that satisfied the range.
       } else {
         var matching = find(records, function (record) {
           return record.version === max
@@ -292,13 +351,16 @@ prototype._findMaxSatisfying = function (
         matching.tree.forEach(function (dependency) {
           delete dependency.range
         })
-        var completeTree = merge(matching.tree, treeWithDependency)
+        var completeTree = mergeFlatTrees(
+          matching.tree, treeWithDependency
+        )
         callback(null, completeTree)
       }
     }
   })
 }
 
+// Get a tree for a specific package and version at a specific sequence.
 prototype._findTree = function (name, versions, sequence, callback) {
   this._findTrees(sequence, name, function (error, trees) {
     /* istanbul ignore if */
@@ -310,21 +372,22 @@ prototype._findTree = function (name, versions, sequence, callback) {
   })
 }
 
+// Find all stored trees for a package at or before a given sequence.
 prototype._findTrees = function (sequence, name, callback) {
   var matches = []
   this._levelup.createReadStream({
-    gt: encode('tree', name, ZERO, ''),
-    lt: encode('tree', name, pack(sequence), '~'),
+    gt: encodeKey('tree', name, ZERO, ''),
+    lt: encodeKey('tree', name, packInteger(sequence), '~'),
     reverse: true
   })
   .once('error', /* istanbul ignore next */ function (error) {
     callback(error)
   })
   .on('data', function (data) {
-    var decoded = decode(data.key)
+    var decoded = decodeKey(data.key)
     matches.push({
       version: decoded[3],
-      sequence: unpack(decoded[2]),
+      sequence: unpackInteger(decoded[2]),
       tree: data.value
     })
   })
@@ -333,21 +396,29 @@ prototype._findTrees = function (sequence, name, callback) {
   })
 }
 
+// Use key-only index records to find all direct and indirect dependents
+// on a specific version of a specific package at or before a given
+// sequence number.
 prototype._findDependents = function (
   sequence, name, version, callback
 ) {
   var matches = []
   this._levelup.createReadStream({
-    gt: encode('dependent', name, ZERO, ''),
-    lt: encode('dependent', name, pack(sequence), '~'),
+    // Encode the low LevelUP key with an empty string suffix so
+    // `encodeKey` will append the component separator, a slash.
+    gt: encodeKey('dependent', name, ZERO, ''),
+    // LevelUP key components are URI-encoded ASCII, so the tilde
+    // character is high.
+    lt: encodeKey('dependent', name, packInteger(sequence), '~'),
     keys: true,
+    // There are no meaningful values, so we can skip them.
     values: false
   })
   .once('error', /* istanbul ignore next */ function (error) {
     callback(error)
   })
-  .on('data', function (key) {
-    var decoded = decode(key)
+  .on('data', function decodeLevelUPKey (key) {
+    var decoded = decodeKey(key)
     matches.push({
       sequence: decoded[2],
       dependency: {
@@ -360,13 +431,17 @@ prototype._findDependents = function (
       }
     })
   })
-  .once('end', function () {
+  .once('end', function filterSatisfyingVersions () {
     callback(null, matches.filter(function (match) {
       return semver.satisfies(version, match.dependency.range)
     }))
   })
 }
 
+// Public API
+
+// Get the flat dependency graph for a package and version at a specific
+// sequence number.
 prototype.query = function (name, version, sequence, callback) {
   this._findTrees(sequence, name, function (error, matches) {
     /* istanbul ignore if */
@@ -385,29 +460,34 @@ prototype.query = function (name, version, sequence, callback) {
   })
 }
 
+// Get the last-processed sequence number.
 prototype.sequence = function () {
   return this._sequence
 }
 
-function encode (/* variadic */) {
+// LevelUP String Encoding Helper Functions
+
+function encodeKey (/* variadic */) {
   return Array.prototype.slice.call(arguments)
   .map(encodeURIComponent)
   .join('/')
 }
 
-function decode (key) {
+function decodeKey (key) {
   return key
   .split('/')
   .map(decodeURIComponent)
 }
 
-function pack (integer) {
+function packInteger (integer) {
   return lexint.pack(integer, 'hex')
 }
 
-function unpack (string) {
+function unpackInteger (string) {
   return lexint.unpack(string, 'hex')
 }
+
+// Helper Functions
 
 function clone (argument) {
   return JSON.parse(JSON.stringify(argument))
