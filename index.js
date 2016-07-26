@@ -57,19 +57,6 @@ prototype._write = function (chunk, encoding, callback) {
       value: ranges
     })
 
-    Object.keys(ranges).forEach(function (dependencyName) {
-      batch.push({
-        key: encode(
-          'dependent',
-          dependencyName,
-          pack(sequence),
-          ranges[dependencyName],
-          publishedName,
-          publishedVersion
-        )
-      })
-    })
-
     self._treeFor(
       sequence, publishedName, publishedVersion, ranges,
       function (error, tree) {
@@ -85,6 +72,39 @@ prototype._write = function (chunk, encoding, callback) {
               publishedVersion
             ),
             value: tree
+          })
+
+          tree.forEach(function (dependency) {
+            var dependencyName = dependency.name
+            var withRanges = []
+            // Direct dependency range.
+            if (dependencyName in ranges) {
+              withRanges.push(ranges[dependencyName])
+            }
+            // Indirect dependency ranges.
+            tree.forEach(function (otherDependency) {
+              otherDependency.links.forEach(function (link) {
+                if (link.name === dependencyName) {
+                  var range = link.range
+                  /* istanbul ignore else */
+                  if (withRanges.indexOf(range) === -1) {
+                    withRanges.push(range)
+                  }
+                }
+              })
+            })
+            withRanges.forEach(function (range) {
+              batch.push({
+                key: encode(
+                  'dependent',
+                  dependencyName,
+                  pack(sequence),
+                  range,
+                  publishedName,
+                  publishedVersion
+                )
+              })
+            })
           })
 
           self._findDependents(
@@ -107,22 +127,31 @@ prototype._write = function (chunk, encoding, callback) {
                         if (error) {
                           done(error)
                         } else {
-                          var publishedTree = tree.concat({
+                          var treeClone = clone(tree)
+                          treeClone.push({
                             name: publishedName,
                             version: publishedVersion,
-                            links: tree.map(function (dependency) {
-                              return {
+                            links: treeClone
+                            .reduce(function (links, dependency) {
+                              return dependency.range
+                              ? links.concat({
                                 name: dependency.name,
                                 version: dependency.version,
-                                range: ranges[dependency.name]
-                              }
-                            })
+                                range: dependency.range
+                              })
+                              : links
+                            }, [])
+                          })
+                          // Demote direct dependencies to indirect
+                          // dependencies.
+                          treeClone.forEach(function (dependency) {
+                            delete dependency.range
                           })
                           var updated = update(
                             result.tree,
                             publishedName,
                             publishedVersion,
-                            publishedTree
+                            treeClone
                           )
                           done(null, {
                             name: dependent.name,
@@ -378,4 +407,8 @@ function pack (integer) {
 
 function unpack (string) {
   return lexint.unpack(string, 'hex')
+}
+
+function clone (argument) {
+  return JSON.parse(JSON.stringify(argument))
 }

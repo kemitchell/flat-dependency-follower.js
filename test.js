@@ -51,6 +51,76 @@ tape('x -> y -> z', function (test) {
   })
 })
 
+tape('w -> x -> y -> z ; new z', function (test) {
+  var follower = testFollower([
+    {name: 'z', versions: {'1.0.0': {dependencies: {}}}},
+    {name: 'y', versions: {'1.0.0': {dependencies: {z: '^1.0.0'}}}},
+    {name: 'x', versions: {'1.0.0': {dependencies: {y: '^1.0.0'}}}},
+    {name: 'w', versions: {'1.0.0': {dependencies: {x: '^1.0.0'}}}},
+    {name: 'z', versions: {'1.0.1': {dependencies: {}}}}
+  ])
+  .once('finish', function () {
+    follower.query('w', '1.0.0', 5, function (error, tree, sequence) {
+      test.ifError(error, 'no error')
+      test.equal(sequence, 5, 'sequence is 5')
+      test.deepEqual(
+        tree,
+        [
+          {
+            name: 'x',
+            version: '1.0.0',
+            range: '^1.0.0',
+            links: [{name: 'y', version: '1.0.0', range: '^1.0.0'}]
+          },
+          {
+            name: 'y',
+            version: '1.0.0',
+            links: [{name: 'z', version: '1.0.1', range: '^1.0.0'}]
+          },
+          {name: 'z', version: '1.0.1', links: []}
+        ],
+        'yields tree'
+      )
+      test.end()
+    })
+  })
+})
+
+tape('w -> x -> y -> z ; new y', function (test) {
+  var follower = testFollower([
+    {name: 'z', versions: {'1.0.0': {dependencies: {}}}},
+    {name: 'y', versions: {'1.0.0': {dependencies: {z: '^1.0.0'}}}},
+    {name: 'x', versions: {'1.0.0': {dependencies: {y: '^1.0.0'}}}},
+    {name: 'w', versions: {'1.0.0': {dependencies: {x: '^1.0.0'}}}},
+    {name: 'y', versions: {'1.0.1': {dependencies: {z: '^1.0.0'}}}}
+  ])
+  .once('finish', function () {
+    follower.query('w', '1.0.0', 5, function (error, tree, sequence) {
+      test.ifError(error, 'no error')
+      test.equal(sequence, 5, 'sequence is 5')
+      test.deepEqual(
+        tree,
+        [
+          {
+            name: 'x',
+            version: '1.0.0',
+            range: '^1.0.0',
+            links: [{name: 'y', version: '1.0.1', range: '^1.0.0'}]
+          },
+          {
+            name: 'y',
+            version: '1.0.1',
+            links: [{name: 'z', version: '1.0.0', range: '^1.0.0'}]
+          },
+          {name: 'z', version: '1.0.0', links: []}
+        ],
+        'yields tree'
+      )
+      test.end()
+    })
+  })
+})
+
 tape('x -> y -> z at earlier sequence', function (test) {
   var follower = testFollower([
     {name: 'z', versions: {'1.0.0': {dependencies: {}}}},
