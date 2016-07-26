@@ -256,30 +256,6 @@ prototype._findMaxSatisfying = function (
   })
 }
 
-prototype._findRanges = function (name, version, sequence, callback) {
-  var found = false
-  this._levelup.createReadStream({
-    gte: encode('ranges', name, version, ZERO),
-    lte: encode('ranges', name, version, pack(sequence)),
-    limit: 1,
-    reverse: true,
-    keys: false,
-    values: true
-  })
-  .once('error', /* istanbul ignore next */ function (error) {
-    callback(error)
-  })
-  .once('data', function (value) {
-    found = true
-    callback(null, value)
-  })
-  .once('end', function () {
-    if (!found) {
-      callback(null, null)
-    }
-  })
-}
-
 prototype._findTree = function (name, versions, sequence, callback) {
   this._findTrees(sequence, name, function (error, trees) {
     /* istanbul ignore if */
@@ -311,22 +287,6 @@ prototype._findTrees = function (sequence, name, callback) {
   })
   .once('end', function () {
     callback(null, matches)
-  })
-}
-
-prototype._getTree = function (name, sequence, version, callback) {
-  var key = encode('tree', name, pack(sequence), version)
-  this._levelup.get(key, function (error, tree) {
-    /* istanbul ignore if */
-    if (error) {
-      if (error.notFound) {
-        callback(null, null)
-      } else {
-        callback(error)
-      }
-    } else {
-      callback(null, tree)
-    }
   })
 }
 
