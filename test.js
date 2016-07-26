@@ -86,6 +86,51 @@ tape('w -> x -> y -> z ; new z', function (test) {
   })
 })
 
+tape('w -> x -> y -> z -> a; new y', function (test) {
+  var follower = testFollower([
+    {name: 'a', versions: {'1.0.0': {dependencies: {}}}},
+    {name: 'z', versions: {'1.0.0': {dependencies: {a: '^1.0.0'}}}},
+    {name: 'y', versions: {'1.0.0': {dependencies: {z: '^1.0.0'}}}},
+    {name: 'x', versions: {'1.0.0': {dependencies: {y: '^1.0.0'}}}},
+    {name: 'w', versions: {'1.0.0': {dependencies: {x: '^1.0.0'}}}},
+    {name: 'y', versions: {'1.0.1': {dependencies: {z: '^1.0.0'}}}}
+  ])
+  .once('finish', function () {
+    follower.query('w', '1.0.0', 6, function (error, tree, sequence) {
+      test.ifError(error, 'no error')
+      test.equal(sequence, 6, 'sequence is 6')
+      test.deepEqual(
+        tree,
+        [
+          {
+            name: 'a',
+            version: '1.0.0',
+            links: []
+          },
+          {
+            name: 'x',
+            version: '1.0.0',
+            range: '^1.0.0',
+            links: [{name: 'y', version: '1.0.1', range: '^1.0.0'}]
+          },
+          {
+            name: 'y',
+            version: '1.0.1',
+            links: [{name: 'z', version: '1.0.0', range: '^1.0.0'}]
+          },
+          {
+            name: 'z',
+            version: '1.0.0',
+            links: [{name: 'a', version: '1.0.0', range: '^1.0.0'}]
+          }
+        ],
+        'yields tree'
+      )
+      test.end()
+    })
+  })
+})
+
 tape('w -> x -> y -> z ; new y', function (test) {
   var follower = testFollower([
     {name: 'z', versions: {'1.0.0': {dependencies: {}}}},
