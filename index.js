@@ -29,11 +29,9 @@ prototype._write = function (chunk, encoding, callback) {
   var batch = []
   function writeBatch () {
     batch.forEach(function (operation) {
-      if (!operation.hasOwnProperty('type')) {
-        operation.type = 'put'
-        if (!operation.hasOwnProperty('value')) {
-          operation.value = ''
-        }
+      operation.type = 'put'
+      if (!operation.hasOwnProperty('value')) {
+        operation.value = ''
       }
     })
     self._levelup.batch(batch, function (error) {
@@ -41,9 +39,7 @@ prototype._write = function (chunk, encoding, callback) {
       if (error) {
         callback(error)
       } else {
-        if (sequence > self._sequence) {
-          self._sequence = sequence
-        }
+        self._sequence = sequence
         callback()
       }
     })
