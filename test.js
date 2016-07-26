@@ -104,6 +104,23 @@ tape('y@1.0.0 ; x -> y@^1.0.0 ; y@1.0.1', function (test) {
   })
 })
 
+tape('no matching version', function (test) {
+  testFollower([
+    {name: 'y', versions: {'1.0.0': {dependencies: {}}}},
+    {name: 'x', versions: {'1.0.0': {dependencies: {y: '^2.0.0'}}}}
+  ])
+  .once('error', function (error) {
+    test.strictEqual(error.noSatisfying, true)
+    test.strictEqual(error.sequence, 2)
+    test.deepEqual(error.dependent, {name: 'x', version: '1.0.0'})
+    test.deepEqual(error.dependency, {name: 'y', range: '^2.0.0'})
+    test.strictEqual(
+      error.message, 'no package satisfying y@^2.0.0 for x@1.0.0'
+    )
+    test.end()
+  })
+})
+
 tape('sequence number', function (test) {
   var follower = testFollower([
     {name: 'y', versions: {'1.0.0': {dependencies: {}}}},
