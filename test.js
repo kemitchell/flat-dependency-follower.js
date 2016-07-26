@@ -95,27 +95,99 @@ tape('w -> x -> y -> z ; new y', function (test) {
     {name: 'y', versions: {'1.0.1': {dependencies: {z: '^1.0.0'}}}}
   ])
   .once('finish', function () {
-    follower.query('w', '1.0.0', 5, function (error, tree, sequence) {
-      test.ifError(error, 'no error')
-      test.equal(sequence, 5, 'sequence is 5')
-      test.deepEqual(
-        tree,
-        [
-          {
-            name: 'x',
-            version: '1.0.0',
-            range: '^1.0.0',
-            links: [{name: 'y', version: '1.0.1', range: '^1.0.0'}]
-          },
-          {
-            name: 'y',
-            version: '1.0.1',
-            links: [{name: 'z', version: '1.0.0', range: '^1.0.0'}]
-          },
-          {name: 'z', version: '1.0.0', links: []}
-        ],
-        'yields tree'
-      )
+    runParallel([
+      function (done) {
+        follower.query(
+          'w', '1.0.0', 5,
+          function (error, tree, sequence) {
+            test.ifError(error, 'no error')
+            test.equal(sequence, 5, 'sequence is 5')
+            test.deepEqual(
+              tree,
+              [
+                {
+                  name: 'x',
+                  version: '1.0.0',
+                  range: '^1.0.0',
+                  links: [
+                    {name: 'y', version: '1.0.1', range: '^1.0.0'}
+                  ]
+                },
+                {
+                  name: 'y',
+                  version: '1.0.1',
+                  links: [
+                    {name: 'z', version: '1.0.0', range: '^1.0.0'}
+                  ]
+                },
+                {name: 'z', version: '1.0.0', links: []}
+              ],
+              'yields tree'
+            )
+            done()
+          }
+        )
+      },
+      function (done) {
+        follower.query(
+          'x', '1.0.0', 5,
+          function (error, tree, sequence) {
+            test.ifError(error, 'no error')
+            test.equal(sequence, 5, 'sequence is 5')
+            test.deepEqual(
+              tree,
+              [
+                {
+                  name: 'y',
+                  version: '1.0.1',
+                  range: '^1.0.0',
+                  links: [
+                    {name: 'z', version: '1.0.0', range: '^1.0.0'}
+                  ]
+                },
+                {name: 'z', version: '1.0.0', links: []}
+              ],
+              'yields tree'
+            )
+            done()
+          }
+        )
+      },
+      function (done) {
+        follower.query(
+          'y', '1.0.1', 5,
+          function (error, tree, sequence) {
+            test.ifError(error, 'no error')
+            test.equal(sequence, 5, 'sequence is 5')
+            test.deepEqual(
+              tree,
+              [
+                {
+                  name: 'z',
+                  version: '1.0.0',
+                  range: '^1.0.0',
+                  links: []
+                }
+              ],
+              'yields tree'
+            )
+            done()
+          }
+        )
+      },
+      function (done) {
+        follower.query(
+          'z', '1.0.0', 5,
+          function (error, tree, sequence) {
+            test.ifError(error, 'no error')
+            test.equal(sequence, 1, 'sequence is 1')
+            test.deepEqual(tree, [], 'yields tree')
+            done()
+          }
+        )
+      }
+    ], function (error) {
+      test.ifError(error)
       test.end()
     })
   })
