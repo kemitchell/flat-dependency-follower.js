@@ -23,6 +23,22 @@ module.exports = FlatDependencyFollower
 //
 // - A "version" is a node-semver version.
 
+// LevelUP Record Structure
+//
+// All LevelUP keys are formed by concatenating string components to
+// create meaningful prefixes.  Components are encoded URI-style, with
+// slashes and %-codes.  lexicographic-integer encodes sequence number
+// integers to hex.
+//
+// Dependency Trees
+//
+//     tree/$name/$sequence/$version -> Array
+//
+// Dependency Relationships
+//
+//     dependent/$dependency/$sequence/$range/$dependent/$version -> nil
+//
+
 function FlatDependencyFollower (levelup) {
   if (!(this instanceof FlatDependencyFollower)) {
     return new FlatDependencyFollower(levelup)
