@@ -37,6 +37,7 @@ prototype._write = function (chunk, encoding, callback) {
       }
     })
     self._levelup.batch(batch, function (error) {
+      /* istanbul ignore if */
       if (error) {
         callback(error)
       } else {
@@ -76,6 +77,7 @@ prototype._write = function (chunk, encoding, callback) {
     self._treeFor(
       sequence, publishedName, publishedVersion, ranges,
       function (error, tree) {
+        /* istanbul ignore if */
         if (error) {
           callback(error)
         } else {
@@ -92,6 +94,7 @@ prototype._write = function (chunk, encoding, callback) {
           self._findDependents(
             sequence, publishedName, publishedVersion,
             function (error, dependents) {
+              /* istanbul ignore if */
               if (error) {
                 callback(error)
               } else {
@@ -104,6 +107,7 @@ prototype._write = function (chunk, encoding, callback) {
                       dependent.version,
                       sequence,
                       function (error, result) {
+                        /* istanbul ignore if */
                         if (error) {
                           done(error)
                         } else {
@@ -134,6 +138,7 @@ prototype._write = function (chunk, encoding, callback) {
                     )
                   },
                   function (error, newDependentTrees) {
+                    /* istanbul ignore if */
                     if (error) {
                       callback(error)
                     } else {
@@ -176,6 +181,7 @@ prototype._treeFor = function (
       self._findMaxSatisfying(
         sequence, dependency.name, dependency.range,
         function (error, result) {
+          /* istanbul ignore if */
           if (error) {
             done(error)
           } else {
@@ -185,6 +191,7 @@ prototype._treeFor = function (
       )
     },
     function (error, dependencyTrees) {
+      /* istanbul ignore if */
       if (error) {
         callback(error)
       } else {
@@ -204,6 +211,7 @@ prototype._findMaxSatisfying = function (
   sequence, name, range, callback
 ) {
   this._findTrees(sequence, name, function (error, records) {
+    /* istanbul ignore if */
     if (error) {
       callback(error)
     } else {
@@ -258,7 +266,7 @@ prototype._findRanges = function (name, version, sequence, callback) {
     keys: false,
     values: true
   })
-  .once('error', function (error) {
+  .once('error', /* istanbul ignore next */ function (error) {
     callback(error)
   })
   .once('data', function (value) {
@@ -274,6 +282,7 @@ prototype._findRanges = function (name, version, sequence, callback) {
 
 prototype._findTree = function (name, versions, sequence, callback) {
   this._findTrees(sequence, name, function (error, trees) {
+    /* istanbul ignore if */
     if (error) {
       callback(error)
     } else {
@@ -289,7 +298,7 @@ prototype._findTrees = function (sequence, name, callback) {
     lt: encode('tree', name, pack(sequence), '~'),
     reverse: true
   })
-  .once('error', function (error) {
+  .once('error', /* istanbul ignore next */ function (error) {
     callback(error)
   })
   .on('data', function (data) {
@@ -308,6 +317,7 @@ prototype._findTrees = function (sequence, name, callback) {
 prototype._getTree = function (name, sequence, version, callback) {
   var key = encode('tree', name, pack(sequence), version)
   this._levelup.get(key, function (error, tree) {
+    /* istanbul ignore if */
     if (error) {
       if (error.notFound) {
         callback(null, null)
@@ -330,7 +340,7 @@ prototype._findDependents = function (
     keys: true,
     values: false
   })
-  .once('error', function (error) {
+  .once('error', /* istanbul ignore next */ function (error) {
     callback(error)
   })
   .on('data', function (key) {
@@ -356,6 +366,7 @@ prototype._findDependents = function (
 
 prototype.query = function (name, version, sequence, callback) {
   this._findTrees(sequence, name, function (error, matches) {
+    /* istanbul ignore if */
     if (error) {
       callback(error)
     } else {
