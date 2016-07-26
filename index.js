@@ -420,20 +420,24 @@ prototype._findDependents = function (
 // Get the flat dependency graph for a package and version at a specific
 // sequence number.
 prototype.query = function (name, version, sequence, callback) {
-  this._findTrees(sequence, name, function (error, matches) {
-    /* istanbul ignore if */
-    if (error) {
-      callback(error)
-    } else {
-      var match = find(matches, function (match) {
-        return match.version === version
-      })
-      if (match) {
-        callback(null, match.tree, match.sequence)
-      } else {
-        callback(null, null, null)
-      }
+  this._levelup.createReadStream({
+    gt: encodeKey('tree', name, ZERO, ''),
+    lt: encodeKey('tree', name, packInteger(sequence), '~'),
+    reverse: true
+  })
+  .once('error', /* istanbul ignore next */ function (error) {
+    callback(error)
+  })
+  .on('data', function (data) {
+    var decoded = decodeKey(data.key)
+    /* istanbul ignore else */
+    if (decoded[3] === version) {
+      this.destroy()
+      callback(null, data.value, unpackInteger(decoded[2]))
     }
+  })
+  .once('end', function () {
+    callback(null, null, null)
   })
 }
 
