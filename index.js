@@ -1,4 +1,5 @@
 var Writable = require('stream').Writable
+var asyncEach = require('async.each')
 var asyncMap = require('async.map')
 var find = require('array-find')
 var inherits = require('util').inherits
@@ -135,87 +136,64 @@ prototype._write = function (chunk, encoding, callback) {
               if (error) {
                 callback(error)
               } else {
-                // Generate an updated tree for each dependent.
-                asyncMap(
-                  dependents,
-                  function (record, done) {
-                    var dependent = record.dependent
-                    // Find the most current tree for the package.
-                    self.query(
-                      dependent.name,
-                      dependent.version,
-                      sequence,
-                      function (error, result) {
-                        /* istanbul ignore if */
-                        if (error) {
-                          done(error)
-                        } else {
-                          // Create a tree with:
-                          //
-                          // 1. the update package
-                          // 2. the updated package's dependencies
-                          //
-                          // and use it to update the existing tree for
-                          // the dependent package.
-                          var treeClone = clone(tree)
-                          treeClone.push({
-                            name: updatedName,
-                            version: updatedVersion,
-                            links: treeClone
-                            .reduce(function (links, dependency) {
-                              return dependency.range
-                              ? links.concat({
-                                name: dependency.name,
-                                version: dependency.version,
-                                range: dependency.range
-                              })
-                              : links
-                            }, [])
-                          })
-                          // Demote direct dependencies to indirect
-                          // dependencies.
-                          treeClone.forEach(function (dependency) {
-                            delete dependency.range
-                          })
-                          var updated = updateFlatTree(
-                            result,
-                            updatedName,
-                            updatedVersion,
-                            treeClone
-                          )
-                          done(null, {
-                            name: dependent.name,
-                            version: dependent.version,
-                            tree: updated
-                          })
-                        }
-                      }
-                    )
-                  },
-                  function (error, newDependentTrees) {
-                    /* istanbul ignore if */
-                    if (error) {
-                      callback(error)
-                    } else {
-                      // Push put operations for new dependent trees.
-                      newDependentTrees.forEach(function (record) {
-                        batch.push({
-                          key: encodeKey(
-                            'tree',
-                            record.name,
-                            packInteger(sequence),
-                            record.version
-                          ),
-                          value: record.tree
-                        })
-                      })
-                      writeBatch()
-                    }
-                  }
-                )
+                asyncEach(dependents, batchUpdatedTree, writeBatch)
               }
             }
           )
+        }
+
+        // Generate an updated tree for a dependent.
+        function batchUpdatedTree (record, done) {
+          var dependent = record.dependent
+          var name = dependent.name
+          var version = dependent.version
+          // Find the most current tree for the package.
+          self.query(name, version, sequence, function (error, result) {
+            /* istanbul ignore if */
+            if (error) {
+              done(error)
+            } else {
+              // Create a tree with:
+              //
+              // 1. the update package
+              // 2. the updated package's dependencies
+              //
+              // and use it to update the existing tree for
+              // the dependent package.
+              var treeClone = clone(tree)
+              treeClone.push({
+                name: updatedName,
+                version: updatedVersion,
+                links: treeClone
+                .reduce(function (links, dependency) {
+                  return dependency.range
+                  ? links.concat({
+                    name: dependency.name,
+                    version: dependency.version,
+                    range: dependency.range
+                  })
+                  : links
+                }, [])
+              })
+              // Demote direct dependencies to indirect
+              // dependencies.
+              treeClone.forEach(function (dependency) {
+                delete dependency.range
+              })
+              var updated = updateFlatTree(
+                result,
+                updatedName,
+                updatedVersion,
+                treeClone
+              )
+              var packed = packInteger(sequence)
+              batch.push({
+                key: encodeKey('tree', name, packed, version),
+                value: updated
+              })
+              done()
+            }
+          })
         }
       }
     )
