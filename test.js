@@ -106,7 +106,9 @@ tape('y@1.0.0 ; x -> y@^1.0.0 ; y@1.0.1', function (test) {
 
 function testFollower (updates) {
   var store = memdb({valueEncoding: 'json'})
-  var follower = new FlatDependencyFollower(store)
+  var follower = Math.random() > 0.5
+  ? new FlatDependencyFollower(store)
+  : FlatDependencyFollower(store)
   updates.forEach(function (update, index) {
     update.sequence = index + 1
   })
