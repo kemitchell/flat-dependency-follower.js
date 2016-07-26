@@ -40,6 +40,7 @@ prototype._write = function (chunk, encoding, callback) {
   var self = this
   var updatedName = chunk.name
   var sequence = chunk.sequence
+  var packed = packInteger(sequence)
 
   // `_write` prepares and executes one large batch of LevelUP
   // operations to store computed information about the update and its
@@ -73,7 +74,7 @@ prototype._write = function (chunk, encoding, callback) {
 
     // Compute the flat package dependency manifest for the new package.
     self._treeFor(
-      sequence, updatedName, updatedVersion, ranges,
+      packed, updatedName, updatedVersion, ranges,
       function (error, tree) {
         /* istanbul ignore if */
         if (error) {
@@ -81,12 +82,7 @@ prototype._write = function (chunk, encoding, callback) {
         } else {
           // Store the tree.
           batch.push({
-            key: encodeKey(
-              'tree',
-              updatedName,
-              packInteger(sequence),
-              updatedVersion
-            ),
+            key: encodeKey('tree', updatedName, packed, updatedVersion),
             value: tree
           })
 
@@ -118,7 +114,7 @@ prototype._write = function (chunk, encoding, callback) {
                 key: encodeKey(
                   'dependent',
                   dependencyName,
-                  packInteger(sequence),
+                  packed,
                   range,
                   updatedName,
                   updatedVersion
@@ -130,7 +126,7 @@ prototype._write = function (chunk, encoding, callback) {
           // Update trees for packages that directly and indirectly
           // depend on the updated package.
           self._findDependents(
-            sequence, updatedName, updatedVersion,
+            packed, updatedName, updatedVersion,
             function (error, dependents) {
               /* istanbul ignore if */
               if (error) {
@@ -148,7 +144,7 @@ prototype._write = function (chunk, encoding, callback) {
           var name = dependent.name
           var version = dependent.version
           // Find the most current tree for the package.
-          self.query(name, version, sequence, function (error, result) {
+          self.query(name, version, packed, function (error, result) {
             /* istanbul ignore if */
             if (error) {
               done(error)
@@ -186,7 +182,6 @@ prototype._write = function (chunk, encoding, callback) {
                 updatedVersion,
                 treeClone
               )
-              var packed = packInteger(sequence)
               batch.push({
                 key: encodeKey('tree', name, packed, version),
                 value: updated
@@ -232,7 +227,7 @@ prototype._treeFor = function (
                 name: name,
                 version: version
               }
-              error.sequence = sequence
+              error.sequence = unpackInteger(sequence)
             }
             done(error)
           } else {
@@ -332,7 +327,7 @@ prototype._findTrees = function (sequence, name, callback) {
   var matches = []
   this._levelup.createReadStream({
     gt: encodeKey('tree', name, ZERO, ''),
-    lt: encodeKey('tree', name, packInteger(sequence), '~'),
+    lt: encodeKey('tree', name, sequence, '~'),
     reverse: true
   })
   .once('error', /* istanbul ignore next */ function (error) {
@@ -364,7 +359,7 @@ prototype._findDependents = function (
     gt: encodeKey('dependent', name, ZERO, ''),
     // LevelUP key components are URI-encoded ASCII, so the tilde
     // character is high.
-    lt: encodeKey('dependent', name, packInteger(sequence), '~'),
+    lt: encodeKey('dependent', name, sequence, '~'),
     keys: true,
     // There are no meaningful values, so we can skip them.
     values: false
@@ -398,9 +393,12 @@ prototype._findDependents = function (
 // Get the flat dependency graph for a package and version at a specific
 // sequence number.
 prototype.query = function (name, version, sequence, callback) {
+  if (typeof sequence === 'number') {
+    sequence = packInteger(sequence)
+  }
   this._levelup.createReadStream({
     gt: encodeKey('tree', name, ZERO, ''),
-    lt: encodeKey('tree', name, packInteger(sequence), '~'),
+    lt: encodeKey('tree', name, sequence, '~'),
     reverse: true
   })
   .once('error', /* istanbul ignore next */ function (error) {
