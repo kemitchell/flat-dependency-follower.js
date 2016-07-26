@@ -141,7 +141,7 @@ prototype._write = function (chunk, encoding, callback) {
                   function (record, done) {
                     var dependent = record.dependent
                     // Find the most current tree for the package.
-                    self._findTree(
+                    self.query(
                       dependent.name,
                       dependent.version,
                       sequence,
@@ -178,7 +178,7 @@ prototype._write = function (chunk, encoding, callback) {
                             delete dependency.range
                           })
                           var updated = updateFlatTree(
-                            result.tree,
+                            result,
                             updatedName,
                             updatedVersion,
                             treeClone
@@ -345,18 +345,6 @@ prototype._findMaxSatisfying = function (
         )
         callback(null, completeTree)
       }
-    }
-  })
-}
-
-// Get a tree for a specific package and version at a specific sequence.
-prototype._findTree = function (name, versions, sequence, callback) {
-  this._findTrees(sequence, name, function (error, trees) {
-    /* istanbul ignore if */
-    if (error) {
-      callback(error)
-    } else {
-      callback(null, trees[0])
     }
   })
 }
