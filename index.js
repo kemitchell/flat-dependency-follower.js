@@ -70,17 +70,6 @@ prototype._write = function (chunk, encoding, callback) {
   Object.keys(chunk.versions).forEach(function (updatedVersion) {
     var ranges = chunk.versions[updatedVersion].dependencies
 
-    // Store the raw `.dependencies` object for the package.
-    batch.push({
-      key: encodeKey(
-        'ranges',
-        updatedName,
-        updatedVersion,
-        packInteger(sequence)
-      ),
-      value: ranges
-    })
-
     // Compute the flat package dependency manifest for the new package.
     self._treeFor(
       sequence, updatedName, updatedVersion, ranges,
