@@ -448,6 +448,7 @@ prototype.query = function (name, version, sequence, callback) {
     var at = decoded[3]
     var resolvedKey = encodeKey(TREE_PREFIX, name, at, version)
     self._levelup.get(resolvedKey, function (error, tree) {
+      /* istanbul ignore if */
       if (error) {
         callback(error)
       } else {
