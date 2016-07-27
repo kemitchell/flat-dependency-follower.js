@@ -34,12 +34,15 @@ module.exports = FlatDependencyFollower
 //
 //     tree/$name/$sequence/$version -> Array
 //
-//     point/$name/$version/$sequence -> nil
+//     pointer/$name/$version/$sequence -> nil
 //
 // Dependency Relationships
 //
 //     dependent/$dependency/$sequence/$range/$dependent/$version -> nil
 //
+var TREE_PREFIX = 'tree'
+var POINTER_PREFIX = 'pointer'
+var DEPENDENCY_PREFIX = 'dependent'
 
 function FlatDependencyFollower (levelup) {
   if (!(this instanceof FlatDependencyFollower)) {
@@ -88,11 +91,11 @@ prototype._write = function (chunk, encoding, callback) {
 
   function pushTreeRecords (name, version, tree) {
     batch.push({
-      key: encodeKey('tree', name, packed, version),
+      key: encodeKey(TREE_PREFIX, name, packed, version),
       value: tree
     })
     batch.push({
-      key: encodeKey('point', name, version, packed)
+      key: encodeKey(POINTER_PREFIX, name, version, packed)
     })
   }
 
@@ -137,7 +140,7 @@ prototype._write = function (chunk, encoding, callback) {
             withRanges.forEach(function (range) {
               batch.push({
                 key: encodeKey(
-                  'dependent',
+                  DEPENDENCY_PREFIX,
                   dependencyName,
                   packed,
                   range,
@@ -348,8 +351,8 @@ prototype._findMaxSatisfying = function (
 prototype._findTrees = function (sequence, name, callback) {
   var matches = []
   this._levelup.createReadStream({
-    gt: encodeKey('tree', name, ZERO, ''),
-    lt: encodeKey('tree', name, sequence, '~'),
+    gt: encodeKey(TREE_PREFIX, name, ZERO, ''),
+    lt: encodeKey(TREE_PREFIX, name, sequence, '~'),
     reverse: true
   })
   .once('error', /* istanbul ignore next */ function (error) {
@@ -378,10 +381,10 @@ prototype._findDependents = function (
   this._levelup.createReadStream({
     // Encode the low LevelUP key with an empty string suffix so
     // `encodeKey` will append the component separator, a slash.
-    gt: encodeKey('dependent', name, ZERO, ''),
+    gt: encodeKey(DEPENDENCY_PREFIX, name, ZERO, ''),
     // LevelUP key components are URI-encoded ASCII, so the tilde
     // character is high.
-    lt: encodeKey('dependent', name, sequence, '~'),
+    lt: encodeKey(DEPENDENCY_PREFIX, name, sequence, '~'),
     keys: true,
     // There are no meaningful values, so we can skip them.
     values: false
@@ -420,8 +423,8 @@ prototype.query = function (name, version, sequence, callback) {
     sequence = packInteger(sequence)
   }
   var readStream = self._levelup.createReadStream({
-    gt: encodeKey('point', name, version, ''),
-    lte: encodeKey('point', name, version, sequence),
+    gt: encodeKey(POINTER_PREFIX, name, version, ''),
+    lte: encodeKey(POINTER_PREFIX, name, version, sequence),
     reverse: true,
     limit: 1,
     keys: true,
@@ -434,7 +437,7 @@ prototype.query = function (name, version, sequence, callback) {
     var decoded = decodeKey(key)
     readStream.destroy()
     var at = decoded[3]
-    var resolvedKey = encodeKey('tree', name, at, version)
+    var resolvedKey = encodeKey(TREE_PREFIX, name, at, version)
     self._levelup.get(resolvedKey, function (error, tree) {
       if (error) {
         callback(error)
