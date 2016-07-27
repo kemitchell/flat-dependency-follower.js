@@ -38,11 +38,11 @@ module.exports = FlatDependencyFollower
 //
 // Dependency Relationships
 //
-//     dependent/$dependency/$sequence/$range/$dependent/$version -> nil
+//     dependency/$dependency/$sequence/$range/$dependent/$version -> nil
 //
 var TREE_PREFIX = 'tree'
 var POINTER_PREFIX = 'pointer'
-var DEPENDENCY_PREFIX = 'dependent'
+var DEPENDENCY_PREFIX = 'dependency'
 
 function FlatDependencyFollower (levelup) {
   if (!(this instanceof FlatDependencyFollower)) {
