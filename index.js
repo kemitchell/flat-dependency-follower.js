@@ -34,6 +34,8 @@ module.exports = FlatDependencyFollower
 //
 //     tree/$name/$sequence/$version -> Array
 //
+//     point/$name/$version/$sequence -> nil
+//
 // Dependency Relationships
 //
 //     dependent/$dependency/$sequence/$range/$dependent/$version -> nil
@@ -84,6 +86,16 @@ prototype._write = function (chunk, encoding, callback) {
     })
   }
 
+  function pushTreeRecords (name, version, tree) {
+    batch.push({
+      key: encodeKey('tree', name, packed, version),
+      value: tree
+    })
+    batch.push({
+      key: encodeKey('point', name, version, packed)
+    })
+  }
+
   // Iterate versions of the package in the update.
   Object.keys(chunk.versions).forEach(function (updatedVersion) {
     var ranges = chunk.versions[updatedVersion].dependencies
@@ -97,10 +109,7 @@ prototype._write = function (chunk, encoding, callback) {
           callback(error)
         } else {
           // Store the tree.
-          batch.push({
-            key: encodeKey('tree', updatedName, packed, updatedVersion),
-            value: tree
-          })
+          pushTreeRecords(updatedName, updatedVersion, tree)
 
           // Store key-only index records.  These will be used to
           // determine that this package's tree needs to be updated when
@@ -198,10 +207,7 @@ prototype._write = function (chunk, encoding, callback) {
                 updatedVersion,
                 treeClone
               )
-              batch.push({
-                key: encodeKey('tree', name, packed, version),
-                value: updated
-              })
+              pushTreeRecords(name, version, updated)
               done()
             }
           })
@@ -409,24 +415,33 @@ prototype._findDependents = function (
 // Get the flat dependency graph for a package and version at a specific
 // sequence number.
 prototype.query = function (name, version, sequence, callback) {
+  var self = this
   if (typeof sequence === 'number') {
     sequence = packInteger(sequence)
   }
-  this._levelup.createReadStream({
-    gt: encodeKey('tree', name, ZERO, ''),
-    lt: encodeKey('tree', name, sequence, '~'),
-    reverse: true
+  var readStream = self._levelup.createReadStream({
+    gt: encodeKey('point', name, version, ''),
+    lte: encodeKey('point', name, version, sequence),
+    reverse: true,
+    limit: 1,
+    keys: true,
+    values: false
   })
   .once('error', /* istanbul ignore next */ function (error) {
     callback(error)
   })
-  .on('data', function (data) {
-    var decoded = decodeKey(data.key)
-    /* istanbul ignore else */
-    if (decoded[3] === version) {
-      this.destroy()
-      callback(null, data.value, unpackInteger(decoded[2]))
-    }
+  .on('data', function (key) {
+    var decoded = decodeKey(key)
+    readStream.destroy()
+    var at = decoded[3]
+    var resolvedKey = encodeKey('tree', name, at, version)
+    self._levelup.get(resolvedKey, function (error, tree) {
+      if (error) {
+        callback(error)
+      } else {
+        callback(null, tree, unpackInteger(at))
+      }
+    })
   })
   .once('end', function () {
     callback(null, null, null)
