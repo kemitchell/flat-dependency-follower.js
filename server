@@ -45,7 +45,7 @@ http.createServer(function (request, response) {
   var pathname = parsed.pathname
   if (pathname === '/sequence') {
     response.end(JSON.stringify(follower.sequence()))
-  } else if (pathname.startsWith('/package/')) {
+  } else if (pathname.indexOf('/package/') === 0) {
     var match = PACKAGE_PATH.exec(pathname)
     var name = decodeURIComponent(match[1])
     var version = decodeURIComponent(match[2])
