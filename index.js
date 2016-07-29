@@ -4,6 +4,7 @@ var asyncMap = require('async.map')
 var find = require('array-find')
 var inherits = require('util').inherits
 var lexint = require('lexicographic-integer')
+var normalize = require('normalize-registry-metadata')
 var mergeFlatTrees = require('merge-flat-package-trees')
 var semver = require('semver')
 var updateFlatTree = require('update-flat-package-tree')
@@ -68,8 +69,18 @@ var prototype = FlatDependencyFollower.prototype
 
 prototype._write = function (chunk, encoding, callback) {
   var self = this
+  var sequence = chunk.seq
+  chunk = chunk.doc
+
+  /* istanbul ignore if */
+  if (!chunk.name && !chunk.versions) {
+    self._sequence = sequence
+    return callback()
+  }
+
+  normalize(chunk)
   var updatedName = chunk.name
-  var sequence = chunk.sequence
+
   var packed = packInteger(sequence)
 
   // `_write` prepares and executes one large batch of LevelUP
@@ -108,17 +119,40 @@ prototype._write = function (chunk, encoding, callback) {
     })
   }
 
-  // Iterate versions of the package in the update.
+  var versions = []
   Object.keys(chunk.versions).forEach(function (updatedVersion) {
-    var ranges = chunk.versions[updatedVersion].dependencies
+    versions.push({
+      updatedVersion: updatedVersion,
+      ranges: chunk.versions[updatedVersion].dependencies || {}
+    })
+  })
+
+  // Iterate versions of the package in the update.
+  asyncEach(versions, batchVersion, function (error) {
+    /* istanbul ignore if */
+    if (error) {
+      callback(error)
+    } else {
+      writeBatch()
+    }
+  })
+
+  function batchVersion (argument, callback) {
+    var updatedVersion = argument.updatedVersion
+    var ranges = argument.ranges
 
     // Compute the flat package dependency manifest for the new package.
     self._treeFor(
       packed, updatedName, updatedVersion, ranges,
       function (error, tree) {
-        /* istanbul ignore if */
         if (error) {
-          callback(error)
+          /* istanbul ignore else */
+          if (error.noSatisfying) {
+            self.emit('missing', error)
+            callback()
+          } else {
+            callback(error)
+          }
         } else {
           // Store the tree.
           pushTreeRecords(updatedName, updatedVersion, tree)
@@ -169,7 +203,7 @@ prototype._write = function (chunk, encoding, callback) {
               if (error) {
                 callback(error)
               } else {
-                asyncEach(dependents, batchUpdatedTree, writeBatch)
+                asyncEach(dependents, batchUpdatedTree, callback)
               }
             }
           )
@@ -226,7 +260,7 @@ prototype._write = function (chunk, encoding, callback) {
         }
       }
     )
-  })
+  }
 }
 
 // Generate a tree for a package, based on the `.dependencies` object in
@@ -309,9 +343,9 @@ prototype._findMaxSatisfying = function (
       // If there isn't a match, yield an informative error with
       // structured data about the failed query.
       if (max === null) {
-        var satisfyingError = new Error(
-          'no package satisfying ' + name + '@' + range
-        )
+        var satisfyingError = {
+          message: 'no package satisfying ' + name + '@' + range
+        }
         satisfyingError.noSatisfying = true
         satisfyingError.dependency = {
           name: name,

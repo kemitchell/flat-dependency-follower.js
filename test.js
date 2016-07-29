@@ -296,7 +296,7 @@ tape('no matching version', function (test) {
     {name: 'y', versions: {'1.0.0': {dependencies: {}}}},
     {name: 'x', versions: {'1.0.0': {dependencies: {y: '^2.0.0'}}}}
   ])
-  .once('error', function (error) {
+  .once('missing', function (error) {
     test.strictEqual(error.noSatisfying, true)
     test.strictEqual(error.sequence, 2)
     test.deepEqual(error.dependent, {name: 'x', version: '1.0.0'})
@@ -320,13 +320,47 @@ tape('sequence number', function (test) {
   })
 })
 
+tape('no dependencies object', function (test) {
+  testFollower([
+    {name: 'y', versions: {'1.0.0': {}}}
+  ])
+  .once('finish', function () {
+    test.end()
+  })
+})
+
+tape('non-publish update', function (test) {
+  var follower = testFollower([
+    {},
+    {name: 'y', versions: {'1.0.0': {dependencies: {}}}},
+    {name: 'x', versions: {'1.0.0': {dependencies: {y: '^1.0.0'}}}}
+  ])
+  .once('finish', function () {
+    follower.query('x', '1.0.0', 3, function (error, tree, sequence) {
+      test.ifError(error, 'no error')
+      test.equal(sequence, 3, 'sequence is 3')
+      test.deepEqual(
+        tree,
+        [{name: 'y', version: '1.0.0', range: '^1.0.0', links: []}],
+        'yields tree'
+      )
+      test.end()
+    })
+  })
+})
+
 function testFollower (updates) {
   var store = memdb({valueEncoding: 'json'})
   var follower = Math.random() > 0.5
   ? new FlatDependencyFollower(store)
   : FlatDependencyFollower(store)
-  updates.forEach(function (update, index) {
-    update.sequence = index + 1
-  })
-  return from2Array(updates).pipe(follower)
+  return from2Array(
+    updates.map(function (update, index) {
+      return {
+        seq: index + 1,
+        doc: update
+      }
+    })
+  )
+  .pipe(follower)
 }
