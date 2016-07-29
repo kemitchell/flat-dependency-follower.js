@@ -22,10 +22,16 @@ var follower = new Follower(levelup)
 var log = pino()
 
 changes
+.on('error', logError)
 .pipe(follower)
-.on('missing', function (error) {
-  log.warn(error)
+.on('error', logError)
+.on('missing', function (info) {
+  log.warn(info)
 })
+
+function logError (error) {
+  log.error(error)
+}
 
 var PACKAGE_PATH = new RegExp(
   '^' +
