@@ -92,8 +92,8 @@ prototype._write = function (chunk, encoding, callback) {
     batch.forEach(function (operation) {
       // Make operations put operations by default.
       operation.type = 'put'
-      // Set a placeholder for key-only records.  These are
-      // primarily used for indexing.
+      // Set a placeholder for key-only records.
+      // These are used for indexing.
       if (!operation.hasOwnProperty('value')) {
         operation.value = ''
       }
@@ -120,7 +120,8 @@ prototype._write = function (chunk, encoding, callback) {
   }
 
   var versions = []
-  Object.keys(chunk.versions).forEach(function (updatedVersion) {
+  Object.keys(chunk.versions)
+  .forEach(function (updatedVersion) {
     versions.push({
       updatedVersion: updatedVersion,
       ranges: chunk.versions[updatedVersion].dependencies || {}
@@ -164,10 +165,12 @@ prototype._write = function (chunk, encoding, callback) {
           tree.forEach(function (dependency) {
             var dependencyName = dependency.name
             var withRanges = []
+
             // Direct dependency range.
             if (dependencyName in ranges) {
               withRanges.push(ranges[dependencyName])
             }
+
             // Indirect dependency ranges.
             tree.forEach(function (otherDependency) {
               otherDependency.links.forEach(function (link) {
@@ -180,6 +183,7 @@ prototype._write = function (chunk, encoding, callback) {
                 }
               })
             })
+
             withRanges.forEach(function (range) {
               batch.push({
                 key: encodeKey(
@@ -214,6 +218,7 @@ prototype._write = function (chunk, encoding, callback) {
           var dependent = record.dependent
           var name = dependent.name
           var version = dependent.version
+
           // Find the most current tree for the package.
           self.query(name, version, packed, function (error, result) {
             /* istanbul ignore if */
@@ -228,6 +233,7 @@ prototype._write = function (chunk, encoding, callback) {
               // and use it to update the existing tree for
               // the dependent package.
               var treeClone = clone(tree)
+
               treeClone.push({
                 name: updatedName,
                 version: updatedVersion,
@@ -242,11 +248,13 @@ prototype._write = function (chunk, encoding, callback) {
                   : links
                 }, [])
               })
+
               // Demote direct dependencies to indirect
               // dependencies.
               treeClone.forEach(function (dependency) {
                 delete dependency.range
               })
+
               var updated = updateFlatTree(
                 result,
                 updatedName,
@@ -254,6 +262,7 @@ prototype._write = function (chunk, encoding, callback) {
                 treeClone
               )
               pushTreeRecords(name, version, updated)
+
               done()
             }
           })
@@ -269,6 +278,7 @@ prototype._treeFor = function (
   sequence, name, version, ranges, callback
 ) {
   var self = this
+
   asyncMap(
     // Turn the Object mapping from package name to SemVer range into an
     // Array of Objects with name and range properties.
@@ -278,6 +288,7 @@ prototype._treeFor = function (
         range: ranges[dependencyName]
       }
     }),
+
     // For each name-and-range pair...
     function (dependency, done) {
       // ...find the dependency tree for the highest version that
@@ -304,6 +315,7 @@ prototype._treeFor = function (
         }
       )
     },
+
     // Once we have trees for dependencies...
     function (error, dependencyTrees) {
       /* istanbul ignore if */
@@ -340,6 +352,7 @@ prototype._findMaxSatisfying = function (
         return record.version
       })
       var max = semver.maxSatisfying(versions, range)
+
       // If there isn't a match, yield an informative error with
       // structured data about the failed query.
       if (max === null) {
@@ -357,6 +370,7 @@ prototype._findMaxSatisfying = function (
         var matching = find(records, function (record) {
           return record.version === max
         })
+
         // Create a new tree with just a record for the top-level
         // package.  The new records links to all direct dependencies in
         // the tree.
@@ -377,10 +391,12 @@ prototype._findMaxSatisfying = function (
             }, [])
           }
         ]
+
         // Demote direct dependencies to indirect dependencies.
         matching.tree.forEach(function (dependency) {
           delete dependency.range
         })
+
         var completeTree = mergeFlatTrees(
           matching.tree, treeWithDependency
         )
