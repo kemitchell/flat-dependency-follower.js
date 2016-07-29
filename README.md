@@ -1,7 +1,9 @@
 An [npm registry follower][follower] that calculates (and recalculates)
 flat package dependency manifests for each registry update. Users can
-query the manifest of any package at any version at any update sequence
-number (`update_seq`).
+query the manifest of any package at any version at any CouchDB-style
+update sequence number.
+
+[follower]: https://github.com/npm/registry-follower-tutorial
 
 Flat package manifests are shaped like:
 
@@ -27,4 +29,15 @@ Flat package manifests are shaped like:
 ]
 ```
 
-[follower]: https://github.com/npm/registry-follower-tutorial
+Where `SemVer` and `SemVerRange` objects are strings.
+
+The package ships with a bin script that starts following the public
+registry and serves data via HTTP.
+
+Useful request paths include:
+
+- `GET /package/$name/$version/$sequence`, where `/$sequence` is the
+  server's current sequence by default.  Serves a flat dependency tree,
+  if any, as JSON.
+
+- `GET /sequence` serves the server's current sequence number.
