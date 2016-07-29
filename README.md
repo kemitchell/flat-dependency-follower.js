@@ -5,6 +5,9 @@ update sequence number.
 
 [follower]: https://github.com/npm/registry-follower-tutorial
 
+**WARNING:  Highly experimental dilettante technology!  Any resemblance
+to real, usable npm package dependency graphs is purely coincidental.**
+
 Flat package manifests are shaped like:
 
 ```javascript
