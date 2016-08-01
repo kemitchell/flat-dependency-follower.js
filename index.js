@@ -291,29 +291,40 @@ prototype._treeFor = function (
 
     // For each name-and-range pair...
     function (dependency, done) {
-      // ...find the dependency tree for the highest version that
-      // satisfies the range.
-      self._findMaxSatisfying(
-        sequence, dependency.name, dependency.range,
-        function (error, result) {
-          /* istanbul ignore if */
-          if (error) {
-            if (error.noSatisfying) {
-              error.message = (
-                error.message + ' for ' + name + '@' + version
-              )
-              error.dependent = {
-                name: name,
-                version: version
-              }
-              error.sequence = unpackInteger(sequence)
-            }
-            done(error)
-          } else {
-            done(null, result)
+      if (semver.validRange(dependency.range) === null) {
+        done(null, [
+          {
+            name: dependency.name,
+            version: dependency.range,
+            range: dependency.range,
+            links: []
           }
-        }
-      )
+        ])
+      } else {
+        // ...find the dependency tree for the highest version that
+        // satisfies the range.
+        self._findMaxSatisfying(
+          sequence, dependency.name, dependency.range,
+          function (error, result) {
+            /* istanbul ignore if */
+            if (error) {
+              if (error.noSatisfying) {
+                error.message = (
+                  error.message + ' for ' + name + '@' + version
+                )
+                error.dependent = {
+                  name: name,
+                  version: version
+                }
+                error.sequence = unpackInteger(sequence)
+              }
+              done(error)
+            } else {
+              done(null, result)
+            }
+          }
+        )
+      }
     },
 
     // Once we have trees for dependencies...
