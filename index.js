@@ -73,7 +73,7 @@ prototype._write = function (chunk, encoding, callback) {
   chunk = chunk.doc
 
   /* istanbul ignore if */
-  if (!chunk.name && !chunk.versions) {
+  if (!validName(chunk.name) || !validVersions(chunk.versions)) {
     self._sequence = sequence
     return callback()
   }
@@ -553,4 +553,12 @@ function unpackInteger (string) {
 
 function clone (argument) {
   return JSON.parse(JSON.stringify(argument))
+}
+
+function validName (argument) {
+  return typeof argument === 'string' && argument.length !== 0
+}
+
+function validVersions (argument) {
+  return typeof argument === 'object'
 }
