@@ -332,15 +332,50 @@ tape('no matching version', function (test) {
     {name: 'y', versions: {'1.0.0': {dependencies: {}}}},
     {name: 'x', versions: {'1.0.0': {dependencies: {y: '^2.0.0'}}}}
   ])
-  .once('missing', function (error) {
-    test.strictEqual(error.noSatisfying, true)
-    test.strictEqual(error.sequence, 2)
-    test.deepEqual(error.dependent, {name: 'x', version: '1.0.0'})
-    test.deepEqual(error.dependency, {name: 'y', range: '^2.0.0'})
+  .once('missing', function (missing) {
+    test.strictEqual(missing.sequence, 2)
+    test.deepEqual(missing.dependent, {name: 'x', version: '1.0.0'})
+    test.deepEqual(missing.dependency, {name: 'y', range: '^2.0.0'})
     test.strictEqual(
-      error.message, 'no package satisfying y@^2.0.0 for x@1.0.0'
+      missing.message, 'no package satisfying y@^2.0.0 for x@1.0.0'
     )
     test.end()
+  })
+})
+
+tape('dependency appears later', function (test) {
+  var follower = testFollower([
+    {name: 'x', versions: {'1.0.0': {dependencies: {y: '^1.0.0'}}}},
+    {name: 'y', versions: {'1.0.0': {dependencies: {}}}}
+  ])
+  .once('finish', function () {
+    runParallel([
+      function (done) {
+        follower.query('x', '1.0.0', 1, function (error, tree) {
+          test.ifError(error, 'no error')
+          test.deepEqual(
+            tree,
+            [{name: 'y', range: '^1.0.0', links: [], missing: true}],
+            'with error'
+          )
+          done()
+        })
+      },
+      function (done) {
+        follower.query('x', '1.0.0', 2, function (error, tree) {
+          test.ifError(error, 'no error')
+          test.deepEqual(
+            tree,
+            [{name: 'y', version: '1.0.0', range: '^1.0.0', links: []}],
+            'updated x depends on y@1.0.1'
+          )
+          done()
+        })
+      }
+    ], function (error, done) {
+      test.ifError(error, 'no error')
+      test.end()
+    })
   })
 })
 

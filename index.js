@@ -146,15 +146,37 @@ prototype._write = function (chunk, encoding, callback) {
     self._treeFor(
       packed, updatedName, updatedVersion, ranges,
       function (error, tree) {
+        /* istanbul ignore if */
         if (error) {
-          /* istanbul ignore else */
-          if (error.noSatisfying) {
-            self.emit('missing', error)
-            callback()
-          } else {
-            callback(error)
-          }
+          callback(error)
         } else {
+          var missingDependencies = tree.filter(function (dependency) {
+            return dependency.hasOwnProperty('missing')
+          })
+          var hasMissingDependencies = missingDependencies.length !== 0
+
+          // We are missing some dependencies for this package.
+          if (hasMissingDependencies) {
+            missingDependencies.forEach(function (dependency) {
+              self.emit('missing', {
+                message: (
+                  'no package satisfying ' +
+                  dependency.name + '@' + dependency.range + ' for ' +
+                  updatedName + '@' + updatedVersion
+                ),
+                sequence: sequence,
+                dependent: {
+                  name: updatedName,
+                  version: updatedVersion
+                },
+                dependency: {
+                  name: dependency.name,
+                  range: dependency.range
+                }
+              })
+            })
+          }
+
           // Store the tree.
           pushTreeRecords(updatedName, updatedVersion, tree)
 
@@ -198,19 +220,23 @@ prototype._write = function (chunk, encoding, callback) {
             })
           })
 
-          // Update trees for packages that directly and indirectly
-          // depend on the updated package.
-          self._findDependents(
-            packed, updatedName, updatedVersion,
-            function (error, dependents) {
-              /* istanbul ignore if */
-              if (error) {
-                callback(error)
-              } else {
-                asyncEach(dependents, batchUpdatedTree, callback)
+          if (hasMissingDependencies) {
+            callback()
+          } else {
+            // Update trees for packages that directly and indirectly
+            // depend on the updated package.
+            self._findDependents(
+              packed, updatedName, updatedVersion,
+              function (error, dependents) {
+                /* istanbul ignore if */
+                if (error) {
+                  callback(error)
+                } else {
+                  asyncEach(dependents, batchUpdatedTree, callback)
+                }
               }
-            }
-          )
+            )
+          }
         }
 
         // Generate an updated tree for a dependent.
@@ -249,9 +275,9 @@ prototype._write = function (chunk, encoding, callback) {
                 }, [])
               })
 
-              // Demote direct dependencies to indirect
-              // dependencies.
               treeClone.forEach(function (dependency) {
+                // Demote direct dependencies to indirect
+                // dependencies.
                 delete dependency.range
               })
 
@@ -306,19 +332,20 @@ prototype._treeFor = function (
         self._findMaxSatisfying(
           sequence, dependency.name, dependency.range,
           function (error, result) {
-            /* istanbul ignore if */
             if (error) {
+              /* istanbul ignore else */
               if (error.noSatisfying) {
-                error.message = (
-                  error.message + ' for ' + name + '@' + version
-                )
-                error.dependent = {
-                  name: name,
-                  version: version
-                }
-                error.sequence = unpackInteger(sequence)
+                done(null, [
+                  {
+                    name: error.dependency.name,
+                    range: error.dependency.range,
+                    missing: true,
+                    links: []
+                  }
+                ])
+              } else {
+                done(error)
               }
-              done(error)
             } else {
               done(null, result)
             }
@@ -367,15 +394,13 @@ prototype._findMaxSatisfying = function (
       // If there isn't a match, yield an informative error with
       // structured data about the failed query.
       if (max === null) {
-        var satisfyingError = {
-          message: 'no package satisfying ' + name + '@' + range
-        }
-        satisfyingError.noSatisfying = true
-        satisfyingError.dependency = {
-          name: name,
-          range: range
-        }
-        callback(satisfyingError)
+        callback({
+          noSatisfying: true,
+          dependency: {
+            name: name,
+            range: range
+          }
+        })
       // Have a tree for a package version that satisfied the range.
       } else {
         var matching = find(records, function (record) {
