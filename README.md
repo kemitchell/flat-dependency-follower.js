@@ -15,15 +15,15 @@ Flat package manifests are shaped like:
   // "Dependency Records"
   {
     name: String,
-    version: SemVer,
+    version: String, // SemVer version or URL
     // Optional.  Indicates the package is a direct dependency.
-    range: SemVerRange,
+    range: String, // SemVer range or URL
     links: [
       // "Link Records"
       {
         name: String,
-        version: SemVer,
-        range: SemVerRange
+        version: String, // SemVer version or URL
+        range: String // SemVer range or URL
       }
       // ...
     ]
@@ -31,8 +31,6 @@ Flat package manifests are shaped like:
   // ...
 ]
 ```
-
-Where `SemVer` and `SemVerRange` objects are strings.
 
 The package ships with a bin script that starts following the public
 registry and serves data via HTTP.
