@@ -20,9 +20,9 @@ module.exports = FlatDependencyFollower
 // - A "tree" is a flattish data structure listing the dependencies that
 //   need to be installed and how they depend on one another.
 //
-// - A "range" is a node-semver range.
+// - A "range" is a node-semver range or URL.
 //
-// - A "version" is a node-semver version.
+// - A "version" is a node-semver version or URL.
 
 // LevelUP Record Structure
 //
