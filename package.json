@@ -1,7 +1,7 @@
 {
   "name": "flat-dependency-follower",
   "description": "follow npm registry updates, calculating flat dependency graphs",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "author": "Kyle E. Mitchell <kyle@kemitchell.com> (https://kemitchell.com/)",
   "bin": "server",
   "dependencies": {
