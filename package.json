@@ -11,11 +11,12 @@
     "changes-stream": "^1.1.0",
     "level": "^1.4.0",
     "lexicographic-integer": "^1.1.0",
-    "merge-flat-package-trees": "^1.1.0",
+    "merge-flat-package-trees": "^2.0.0",
     "normalize-registry-metadata": "^1.1.2",
     "pino": "^2.7.5",
     "semver": "^5.2.0",
-    "update-flat-package-tree": "^1.1.0"
+    "sort-flat-package-tree": "^1.0.0",
+    "update-flat-package-tree": "^2.0.0"
   },
   "devDependencies": {
     "from2-array": "0.0.4",

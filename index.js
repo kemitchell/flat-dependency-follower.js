@@ -7,6 +7,7 @@ var lexint = require('lexicographic-integer')
 var normalize = require('normalize-registry-metadata')
 var mergeFlatTrees = require('merge-flat-package-trees')
 var semver = require('semver')
+var sortFlatTree = require('sort-flat-package-tree')
 var updateFlatTree = require('update-flat-package-tree')
 
 module.exports = FlatDependencyFollower
@@ -281,13 +282,14 @@ prototype._write = function (chunk, encoding, callback) {
                 delete dependency.range
               })
 
-              var updated = updateFlatTree(
+              updateFlatTree(
                 result,
                 updatedName,
                 updatedVersion,
                 treeClone
               )
-              pushTreeRecords(name, version, updated)
+              sortFlatTree(result)
+              pushTreeRecords(name, version, result)
 
               done()
             }
@@ -363,8 +365,9 @@ prototype._treeFor = function (
         // ...combine them to form a new tree.
         var combinedTree = []
         dependencyTrees.forEach(function (tree) {
-          combinedTree = mergeFlatTrees(combinedTree, tree)
+          mergeFlatTrees(combinedTree, tree)
         })
+        sortFlatTree(combinedTree)
         callback(null, combinedTree)
       }
     }
@@ -433,10 +436,9 @@ prototype._findMaxSatisfying = function (
           delete dependency.range
         })
 
-        var completeTree = mergeFlatTrees(
-          matching.tree, treeWithDependency
-        )
-        callback(null, completeTree)
+        mergeFlatTrees(matching.tree, treeWithDependency)
+        sortFlatTree(matching.tree)
+        callback(null, matching.tree)
       }
     }
   })
