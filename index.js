@@ -76,6 +76,7 @@ prototype._write = function (chunk, encoding, callback) {
   /* istanbul ignore if */
   if (!validName(chunk.name) || !validVersions(chunk.versions)) {
     self._sequence = sequence
+    self.emit('sequence', sequence)
     return callback()
   }
 
@@ -105,6 +106,7 @@ prototype._write = function (chunk, encoding, callback) {
         callback(error)
       } else {
         self._sequence = sequence
+        self.emit('sequence', sequence)
         callback()
       }
     })

@@ -28,6 +28,9 @@ changes
 .on('missing', function (info) {
   log.warn(info)
 })
+.on('sequence', function (sequence) {
+  log.warn({sequence: sequence})
+})
 
 function logError (error) {
   log.error(error)
