@@ -10,6 +10,10 @@ var semver = require('semver')
 var sortFlatTree = require('sort-flat-package-tree')
 var updateFlatTree = require('update-flat-package-tree')
 
+var DEPENDENCY_LIMIT = process.env.DEPENDENCY_LIMIT
+? parseInt(process.env.DEPENDENCY_LIMIT)
+: Infinity
+
 module.exports = FlatDependencyFollower
 
 // A Note on Terminology
@@ -132,7 +136,7 @@ prototype._write = function (chunk, encoding, callback) {
   })
 
   // Iterate versions of the package in the update.
-  asyncEach(versions, batchVersion, function (error) {
+  asyncEach(versions, batchIfWithinLimit, function (error) {
     /* istanbul ignore if */
     if (error) {
       callback(error)
@@ -140,6 +144,16 @@ prototype._write = function (chunk, encoding, callback) {
       writeBatch()
     }
   })
+
+  function batchIfWithinLimit (argument, callback) {
+    var ranges = argument.ranges
+    if (Object.keys(ranges).length <= DEPENDENCY_LIMIT) {
+      batchVersion(argument, callback)
+    } else {
+      self.emit('ignored', argument)
+      callback()
+    }
+  }
 
   function batchVersion (argument, callback) {
     var updatedVersion = argument.updatedVersion
