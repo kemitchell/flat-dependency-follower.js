@@ -26,10 +26,10 @@ changes
 .pipe(follower)
 .on('error', logError)
 .on('missing', function (info) {
-  log.warn({event: 'missing'}, info)
+  log.warn(info, 'missing')
 })
 .on('ignored', function (info) {
-  log.warn({event: 'ignored'}, info)
+  log.warn(info, 'ignored')
 })
 .on('sequence', function (sequence) {
   log.warn({sequence: sequence})
