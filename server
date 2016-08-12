@@ -9,7 +9,9 @@ var url = require('url')
 var changes = new ChangesStream({
   db: 'https://replicate.npmjs.com',
   include_docs: true,
-  since: 1
+  since: process.argv[2]
+  ? parseInt(process.argv[2])
+  : 1
 })
 
 var levelup = level(
