@@ -249,8 +249,8 @@ prototype._write = function (chunk, encoding, callback) {
               // 1. the update package
               // 2. the updated package's dependencies
               //
-              // and use it to update the existing tree for
-              // the dependent package.
+              // and use it to update the existing tree for the
+              // dependent package.
               var treeClone = clone(tree)
 
               treeClone.push({
@@ -269,8 +269,7 @@ prototype._write = function (chunk, encoding, callback) {
               })
 
               treeClone.forEach(function (dependency) {
-                // Demote direct dependencies to indirect
-                // dependencies.
+                // Demote direct dependencies to indirect dependencies.
                 delete dependency.range
               })
 
@@ -393,9 +392,8 @@ prototype._findMaxSatisfying = function (
         return record.version === max
       })
 
-      // Create a new tree with just a record for the top-level
-      // package.  The new records links to all direct dependencies in
-      // the tree.
+      // Create a new tree with just a record for the top-level package.
+      // The new records links to all direct dependencies in the tree.
       var treeWithDependency = [
         {
           name: name,
