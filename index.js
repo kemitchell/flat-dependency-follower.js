@@ -104,16 +104,11 @@ prototype._write = function (chunk, encoding, callback) {
         operation.value = ''
       }
     })
-    self._levelup.batch(batch, function (error) {
-      /* istanbul ignore if */
-      if (error) {
-        callback(error)
-      } else {
-        self._sequence = sequence
-        self.emit('sequence', sequence)
-        callback()
-      }
-    })
+    self._levelup.batch(batch, ifError(callback, function () {
+      self._sequence = sequence
+      self.emit('sequence', sequence)
+      callback()
+    }))
   }
 
   function pushTreeRecords (name, version, tree) {
@@ -136,14 +131,7 @@ prototype._write = function (chunk, encoding, callback) {
   })
 
   // Iterate versions of the package in the update.
-  asyncEach(versions, batchIfWithinLimit, function (error) {
-    /* istanbul ignore if */
-    if (error) {
-      callback(error)
-    } else {
-      writeBatch()
-    }
-  })
+  asyncEach(versions, batchIfWithinLimit, ifError(callback, writeBatch))
 
   function batchIfWithinLimit (argument, callback) {
     var ranges = argument.ranges
@@ -162,98 +150,88 @@ prototype._write = function (chunk, encoding, callback) {
     // Compute the flat package dependency manifest for the new package.
     self._treeFor(
       packed, updatedName, updatedVersion, ranges,
-      function (error, tree) {
-        /* istanbul ignore if */
-        if (error) {
-          callback(error)
-        } else {
-          var missingDependencies = tree.filter(function (dependency) {
-            return dependency.hasOwnProperty('missing')
-          })
-          var hasMissingDependencies = missingDependencies.length !== 0
+      ifError(callback, function (tree) {
+        var missingDependencies = tree.filter(function (dependency) {
+          return dependency.hasOwnProperty('missing')
+        })
+        var hasMissingDependencies = missingDependencies.length !== 0
 
-          // We are missing some dependencies for this package.
-          if (hasMissingDependencies) {
-            missingDependencies.forEach(function (dependency) {
-              self.emit('missing', {
-                message: (
-                  'no package satisfying ' +
-                  dependency.name + '@' + dependency.range + ' for ' +
-                  updatedName + '@' + updatedVersion
-                ),
-                sequence: sequence,
-                dependent: {
-                  name: updatedName,
-                  version: updatedVersion
-                },
-                dependency: {
-                  name: dependency.name,
-                  range: dependency.range
-                }
-              })
+        // We are missing some dependencies for this package.
+        if (hasMissingDependencies) {
+          missingDependencies.forEach(function (dependency) {
+            self.emit('missing', {
+              message: (
+                'no package satisfying ' +
+                dependency.name + '@' + dependency.range + ' for ' +
+                updatedName + '@' + updatedVersion
+              ),
+              sequence: sequence,
+              dependent: {
+                name: updatedName,
+                version: updatedVersion
+              },
+              dependency: {
+                name: dependency.name,
+                range: dependency.range
+              }
             })
+          })
+        }
+
+        // Store the tree.
+        pushTreeRecords(updatedName, updatedVersion, tree)
+
+        // Store key-only index records.  These will be used to
+        // determine that this package's tree needs to be updated when
+        // new versions of any of its dependencies---direct or
+        // indirect---come in later.
+        tree.forEach(function (dependency) {
+          var dependencyName = dependency.name
+          var withRanges = []
+
+          // Direct dependency range.
+          if (dependencyName in ranges) {
+            withRanges.push(ranges[dependencyName])
           }
 
-          // Store the tree.
-          pushTreeRecords(updatedName, updatedVersion, tree)
-
-          // Store key-only index records.  These will be used to
-          // determine that this package's tree needs to be updated when
-          // new versions of any of its dependencies---direct or
-          // indirect---come in later.
-          tree.forEach(function (dependency) {
-            var dependencyName = dependency.name
-            var withRanges = []
-
-            // Direct dependency range.
-            if (dependencyName in ranges) {
-              withRanges.push(ranges[dependencyName])
-            }
-
-            // Indirect dependency ranges.
-            tree.forEach(function (otherDependency) {
-              otherDependency.links.forEach(function (link) {
-                if (link.name === dependencyName) {
-                  var range = link.range
-                  /* istanbul ignore else */
-                  if (withRanges.indexOf(range) === -1) {
-                    withRanges.push(range)
-                  }
-                }
-              })
-            })
-
-            withRanges.forEach(function (range) {
-              batch.push({
-                key: encodeKey(
-                  DEPENDENCY_PREFIX,
-                  dependencyName,
-                  packed,
-                  range,
-                  updatedName,
-                  updatedVersion
-                )
-              })
-            })
-          })
-
-          if (hasMissingDependencies) {
-            callback()
-          } else {
-            // Update trees for packages that directly and indirectly
-            // depend on the updated package.
-            self._findDependents(
-              packed, updatedName, updatedVersion,
-              function (error, dependents) {
-                /* istanbul ignore if */
-                if (error) {
-                  callback(error)
-                } else {
-                  asyncEach(dependents, batchUpdatedTree, callback)
+          // Indirect dependency ranges.
+          tree.forEach(function (otherDependency) {
+            otherDependency.links.forEach(function (link) {
+              if (link.name === dependencyName) {
+                var range = link.range
+                /* istanbul ignore else */
+                if (withRanges.indexOf(range) === -1) {
+                  withRanges.push(range)
                 }
               }
-            )
-          }
+            })
+          })
+
+          withRanges.forEach(function (range) {
+            batch.push({
+              key: encodeKey(
+                DEPENDENCY_PREFIX,
+                dependencyName,
+                packed,
+                range,
+                updatedName,
+                updatedVersion
+              )
+            })
+          })
+        })
+
+        if (hasMissingDependencies) {
+          callback()
+        } else {
+          // Update trees for packages that directly and indirectly
+          // depend on the updated package.
+          self._findDependents(
+            packed, updatedName, updatedVersion,
+            ifError(callback, function (dependents) {
+              asyncEach(dependents, batchUpdatedTree, callback)
+            })
+          )
         }
 
         // Generate an updated tree for a dependent.
@@ -263,11 +241,9 @@ prototype._write = function (chunk, encoding, callback) {
           var version = dependent.version
 
           // Find the most current tree for the package.
-          self.query(name, version, packed, function (error, result) {
-            /* istanbul ignore if */
-            if (error) {
-              done(error)
-            } else {
+          self.query(
+            name, version, packed,
+            ifError(done, function (result) {
               // Create a tree with:
               //
               // 1. the update package
@@ -308,10 +284,10 @@ prototype._write = function (chunk, encoding, callback) {
               pushTreeRecords(name, version, result)
 
               done()
-            }
-          })
+            })
+          )
         }
-      }
+      })
     )
   }
 }
@@ -373,20 +349,15 @@ prototype._treeFor = function (
     },
 
     // Once we have trees for dependencies...
-    function (error, dependencyTrees) {
-      /* istanbul ignore if */
-      if (error) {
-        callback(error)
-      } else {
-        // ...combine them to form a new tree.
-        var combinedTree = []
-        dependencyTrees.forEach(function (tree) {
-          mergeFlatTrees(combinedTree, tree)
-        })
-        sortFlatTree(combinedTree)
-        callback(null, combinedTree)
-      }
-    }
+    ifError(callback, function (dependencyTrees) {
+      // ...combine them to form a new tree.
+      var combinedTree = []
+      dependencyTrees.forEach(function (tree) {
+        mergeFlatTrees(combinedTree, tree)
+      })
+      sortFlatTree(combinedTree)
+      callback(null, combinedTree)
+    })
   )
 }
 
@@ -398,66 +369,61 @@ prototype._findMaxSatisfying = function (
   sequence, name, range, callback
 ) {
   // Fetch all the trees for the package at the current sequence.
-  this._findTrees(sequence, name, function (error, records) {
-    /* istanbul ignore if */
-    if (error) {
-      callback(error)
-    } else {
-      // Find the tree that corresponds to the highest SemVer that
-      // satisfies our target range.
-      var versions = records.map(function (record) {
-        return record.version
+  this._findTrees(sequence, name, ifError(callback, function (records) {
+    // Find the tree that corresponds to the highest SemVer that
+    // satisfies our target range.
+    var versions = records.map(function (record) {
+      return record.version
+    })
+    var max = semver.maxSatisfying(versions, range)
+
+    // If there isn't a match, yield an informative error with
+    // structured data about the failed query.
+    if (max === null) {
+      callback({
+        noSatisfying: true,
+        dependency: {
+          name: name,
+          range: range
+        }
       })
-      var max = semver.maxSatisfying(versions, range)
+    // Have a tree for a package version that satisfied the range.
+    } else {
+      var matching = find(records, function (record) {
+        return record.version === max
+      })
 
-      // If there isn't a match, yield an informative error with
-      // structured data about the failed query.
-      if (max === null) {
-        callback({
-          noSatisfying: true,
-          dependency: {
-            name: name,
-            range: range
-          }
-        })
-      // Have a tree for a package version that satisfied the range.
-      } else {
-        var matching = find(records, function (record) {
-          return record.version === max
-        })
+      // Create a new tree with just a record for the top-level
+      // package.  The new records links to all direct dependencies in
+      // the tree.
+      var treeWithDependency = [
+        {
+          name: name,
+          version: max,
+          range: range,
+          // Link to all direct dependencies.
+          links: matching.tree.reduce(function (links, dependency) {
+            return dependency.range
+            ? links.concat({
+              name: dependency.name,
+              version: dependency.version,
+              range: dependency.range
+            })
+            : links
+          }, [])
+        }
+      ]
 
-        // Create a new tree with just a record for the top-level
-        // package.  The new records links to all direct dependencies in
-        // the tree.
-        var treeWithDependency = [
-          {
-            name: name,
-            version: max,
-            range: range,
-            // Link to all direct dependencies.
-            links: matching.tree.reduce(function (links, dependency) {
-              return dependency.range
-              ? links.concat({
-                name: dependency.name,
-                version: dependency.version,
-                range: dependency.range
-              })
-              : links
-            }, [])
-          }
-        ]
+      // Demote direct dependencies to indirect dependencies.
+      matching.tree.forEach(function (dependency) {
+        delete dependency.range
+      })
 
-        // Demote direct dependencies to indirect dependencies.
-        matching.tree.forEach(function (dependency) {
-          delete dependency.range
-        })
-
-        mergeFlatTrees(matching.tree, treeWithDependency)
-        sortFlatTree(matching.tree)
-        callback(null, matching.tree)
-      }
+      mergeFlatTrees(matching.tree, treeWithDependency)
+      sortFlatTree(matching.tree)
+      callback(null, matching.tree)
     }
-  })
+  }))
 }
 
 // Find all stored trees for a package at or before a given sequence.
@@ -551,14 +517,9 @@ prototype.query = function (name, version, sequence, callback) {
     readStream.destroy()
     var at = decoded[3]
     var resolvedKey = encodeKey(TREE_PREFIX, name, at, version)
-    self._levelup.get(resolvedKey, function (error, tree) {
-      /* istanbul ignore if */
-      if (error) {
-        callback(error)
-      } else {
-        callback(null, tree, unpackInteger(at))
-      }
-    })
+    self._levelup.get(resolvedKey, ifError(callback, function (tree) {
+      callback(null, tree, unpackInteger(at))
+    }))
   })
   .once('end', function () {
     callback(null, null, null)
@@ -572,8 +533,10 @@ prototype.sequence = function () {
 
 // LevelUP String Encoding Helper Functions
 
+var slice = Array.prototype.slice
+
 function encodeKey (/* variadic */) {
-  return Array.prototype.slice.call(arguments)
+  return slice.call(arguments)
   .map(encodeURIComponent)
   .join('/')
 }
@@ -604,4 +567,15 @@ function validName (argument) {
 
 function validVersions (argument) {
   return typeof argument === 'object'
+}
+
+function ifError (onError, onSuccess) {
+  return function (/* variadic */) {
+    var error = arguments[0]
+    if (error) {
+      onError.apply(null, arguments)
+    } else {
+      onSuccess.apply(null, slice.call(arguments, 1))
+    }
+  }
 }
