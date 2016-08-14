@@ -53,7 +53,7 @@ registry and serves data via HTTP.
 
 Useful request paths include:
 
-- `GET /package/$name/$version/$sequence`, where `/$sequence` is the
+- `GET /package/{name}/{version}{/sequence}`, where `sequence` is the
   server's current sequence by default.  Serves a flat dependency tree,
   if any, as JSON.
 
