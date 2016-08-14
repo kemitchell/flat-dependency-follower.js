@@ -58,3 +58,9 @@ Useful request paths include:
   if any, as JSON.
 
 - `GET /sequence` serves the server's current sequence number.
+
+## Special Thanks
+
+- [Mikola Lysenko](https://www.npmjs.com/~mikolalysenko)
+- [Rebecca Turner](https://www.npmjs.com/~iarna)
+- [Ashley Williams](https://www.npmjs.com/~ag_dubs)
