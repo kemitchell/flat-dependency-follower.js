@@ -221,18 +221,14 @@ prototype._write = function (chunk, encoding, callback) {
           })
         })
 
-        if (hasMissingDependencies) {
-          callback()
-        } else {
-          // Update trees for packages that directly and indirectly
-          // depend on the updated package.
-          self._findDependents(
-            packed, updatedName, updatedVersion,
-            ifError(callback, function (dependents) {
-              asyncEach(dependents, batchUpdatedTree, callback)
-            })
-          )
-        }
+        // Update trees for packages that directly and indirectly
+        // depend on the updated package.
+        self._findDependents(
+          packed, updatedName, updatedVersion,
+          ifError(callback, function (dependents) {
+            asyncEach(dependents, batchUpdatedTree, callback)
+          })
+        )
 
         // Generate an updated tree for a dependent.
         function batchUpdatedTree (record, done) {
