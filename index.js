@@ -75,7 +75,6 @@ prototype._write = function (chunk, encoding, callback) {
   var sequence = chunk.seq
   chunk = chunk.doc
 
-  /* istanbul ignore if */
   if (!validName(chunk.name) || !validVersions(chunk.versions)) {
     self._sequence = sequence
     self.emit('sequence', sequence)
@@ -569,6 +568,7 @@ function validVersions (argument) {
 function ifError (onError, onSuccess) {
   return function (/* variadic */) {
     var error = arguments[0]
+    /* istanbul ignore if */
     if (error) {
       onError.apply(null, arguments)
     } else {
