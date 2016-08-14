@@ -18,8 +18,8 @@ Flat package manifests are shaped like:
   {
     name: String,
     version: String, // SemVer version or URL
-    // Optional.  Indicates the package is a direct dependency.
-    range: String, // SemVer range or URL
+    range: String, // Optional SemVer range or URL
+                   // Indicates the package is a direct dependency.
     links: [
       // "Link Records"
       {
