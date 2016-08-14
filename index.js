@@ -10,10 +10,6 @@ var semver = require('semver')
 var sortFlatTree = require('sort-flat-package-tree')
 var updateFlatTree = require('update-flat-package-tree')
 
-var DEPENDENCY_LIMIT = process.env.DEPENDENCY_LIMIT
-? parseInt(process.env.DEPENDENCY_LIMIT)
-: Infinity
-
 module.exports = FlatDependencyFollower
 
 // A Note on Terminology
@@ -59,12 +55,13 @@ var TREE_PREFIX = 'tree'
 var POINTER_PREFIX = 'pointer'
 var DEPENDENCY_PREFIX = 'dependency'
 
-function FlatDependencyFollower (levelup) {
+function FlatDependencyFollower (levelup, limit) {
   if (!(this instanceof FlatDependencyFollower)) {
-    return new FlatDependencyFollower(levelup)
+    return new FlatDependencyFollower(levelup, limit)
   }
   this._levelup = levelup
   this._sequence = 0
+  this._limit = limit === undefined ? Infinity : limit
   Writable.call(this, {objectMode: true})
 }
 
@@ -74,6 +71,7 @@ var prototype = FlatDependencyFollower.prototype
 
 prototype._write = function (chunk, encoding, callback) {
   var self = this
+  var LIMIT = this._limit
   var sequence = chunk.seq
   chunk = chunk.doc
 
@@ -135,10 +133,15 @@ prototype._write = function (chunk, encoding, callback) {
 
   function batchIfWithinLimit (argument, callback) {
     var ranges = argument.ranges
-    if (Object.keys(ranges).length <= DEPENDENCY_LIMIT) {
+    if (Object.keys(ranges).length <= LIMIT) {
       batchVersion(argument, callback)
     } else {
-      self.emit('ignored', argument)
+      self.emit('ignored', {
+        sequence: sequence,
+        name: updatedName,
+        version: argument.updatedVersion,
+        dependencies: ranges
+      })
       callback()
     }
   }

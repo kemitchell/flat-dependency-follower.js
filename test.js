@@ -420,11 +420,41 @@ tape('non-publish update', function (test) {
   })
 })
 
-function testFollower (updates) {
+tape('dependency count limit', function (test) {
+  var tooManyDependencies = {
+    x: '^1.0.0',
+    y: '^1.0.0',
+    z: '^1.0.0'
+  }
+  testFollower(
+    [
+      {
+        name: 'w',
+        versions: {'1.0.0': {dependencies: tooManyDependencies}}
+      }
+    ],
+    2 // Maximum dependencies
+  )
+  .once('ignored', function (data) {
+    test.deepEqual(
+      data,
+      {
+        sequence: 1,
+        name: 'w',
+        version: '1.0.0',
+        dependencies: tooManyDependencies
+      },
+      'emits ignored'
+    )
+    test.end()
+  })
+})
+
+function testFollower (updates, limit) {
   var store = memdb({valueEncoding: 'json'})
   var follower = Math.random() > 0.5
-  ? new FlatDependencyFollower(store)
-  : FlatDependencyFollower(store)
+  ? new FlatDependencyFollower(store, limit)
+  : FlatDependencyFollower(store, limit)
   return from2Array(
     updates.map(function (update, index) {
       return {
