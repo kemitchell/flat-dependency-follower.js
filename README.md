@@ -1,16 +1,21 @@
-An [npm registry follower][follower] that calculates (and recalculates)
-flat package dependency manifests for each registry update. Users can
-query the manifest of any package at any version at any CouchDB-style
-update sequence number.
+An [npm registry follower][follower] that calculates and recalculates
+dependency trees for every public package on each registry update.
+Clients can fetch data structures describing the dependency tree of any
+version of any package at any point in the public registry's history,
+by CouchDB-style replication update sequence number.
 
 [follower]: https://github.com/npm/registry-follower-tutorial
+
+Exports a `Writable` stream that reads CouchDB-style update objects
+and provides a query method.  Installs a server that follows the npm
+public registry and serves results via HTTP.
 
 ## Flat Package Trees?
 
 **WARNING:  Highly experimental dilettante technology!  Any resemblance
-to real, usable npm package dependency graphs is purely coincidental.**
+to real, usable npm package dependency trees is purely coincidental.**
 
-Flat package manifests are shaped like:
+Flat package manifests are [adjacency lists] shaped like:
 
 ```javascript
 [
@@ -34,8 +39,10 @@ Flat package manifests are shaped like:
 ]
 ```
 
+[adjacency lists]: https://en.wikipedia.org/wiki/Adjacency_list
+
 Flat package trees differ from graphs produced by either npm version
-2 or npm version 3 in a number of ways.  Some of them we know about:
+2 or npm version 3 in a number of ways.  A few we know about:
 
 1.  Flat package tree resolution is "aggressive":  Version ranges
     always resolve to the highest-available version of the dependency
@@ -45,6 +52,8 @@ Flat package trees differ from graphs produced by either npm version
 
 2.  Flat package trees do not resolve Git, tarball, path, or other
     non-SemVer-range dependencies.
+
+There are probably others.
 
 ## HTTP Server
 
