@@ -61,6 +61,7 @@ Useful request paths include:
 
 ## Special Thanks
 
+- [Chris Dickinson](https://www.npmjs.com/~chrisdickinson)
 - [Mikola Lysenko](https://www.npmjs.com/~mikolalysenko)
 - [Rebecca Turner](https://www.npmjs.com/~iarna)
 - [Ashley Williams](https://www.npmjs.com/~ag_dubs)
