@@ -55,13 +55,12 @@ var TREE_PREFIX = 'tree'
 var POINTER_PREFIX = 'pointer'
 var DEPENDENCY_PREFIX = 'dependency'
 
-function FlatDependencyFollower (levelup, limit) {
+function FlatDependencyFollower (levelup) {
   if (!(this instanceof FlatDependencyFollower)) {
-    return new FlatDependencyFollower(levelup, limit)
+    return new FlatDependencyFollower(levelup)
   }
   this._levelup = levelup
   this._sequence = 0
-  this._limit = limit === undefined ? Infinity : limit
   Writable.call(this, {objectMode: true})
 }
 
@@ -71,7 +70,6 @@ var prototype = FlatDependencyFollower.prototype
 
 prototype._write = function (chunk, encoding, callback) {
   var self = this
-  var LIMIT = this._limit
   var sequence = chunk.seq
   chunk = chunk.doc
 
@@ -86,29 +84,13 @@ prototype._write = function (chunk, encoding, callback) {
 
   var packed = packInteger(sequence)
 
-  // `_write` prepares and executes one large batch of LevelUP
-  // operations to store computed information about the update and its
-  // consequences.
-  var batch = []
-
-  function writeBatch () {
-    batch.forEach(function (operation) {
-      // Make operations put operations by default.
-      operation.type = 'put'
-      // Set a placeholder for key-only records.
-      // These are used for indexing.
-      if (!operation.hasOwnProperty('value')) {
-        operation.value = ''
-      }
-    })
-    self._levelup.batch(batch, ifError(callback, function () {
-      self._sequence = sequence
-      self.emit('sequence', sequence)
-      callback()
-    }))
+  function finish () {
+    self._sequence = sequence
+    self.emit('sequence', sequence)
+    callback()
   }
 
-  function pushTreeRecords (name, version, tree) {
+  function pushTreeRecords (batch, name, version, tree) {
     batch.push({
       key: encodeKey(TREE_PREFIX, name, packed, version),
       value: tree
@@ -128,24 +110,9 @@ prototype._write = function (chunk, encoding, callback) {
   })
 
   // Iterate versions of the package in the update.
-  asyncEach(versions, batchIfWithinLimit, ifError(callback, writeBatch))
+  asyncEach(versions, writeVersion, ifError(callback, finish))
 
-  function batchIfWithinLimit (argument, callback) {
-    var ranges = argument.ranges
-    if (Object.keys(ranges).length <= LIMIT) {
-      batchVersion(argument, callback)
-    } else {
-      self.emit('ignored', {
-        sequence: sequence,
-        name: updatedName,
-        version: argument.updatedVersion,
-        dependencies: ranges
-      })
-      callback()
-    }
-  }
-
-  function batchVersion (argument, callback) {
+  function writeVersion (argument, callback) {
     var updatedVersion = argument.updatedVersion
     var ranges = argument.ranges
 
@@ -180,8 +147,10 @@ prototype._write = function (chunk, encoding, callback) {
           })
         }
 
+        var updatedBatch = []
+
         // Store the tree.
-        pushTreeRecords(updatedName, updatedVersion, tree)
+        pushTreeRecords(updatedBatch, updatedName, updatedVersion, tree)
 
         // Store key-only index records.  These will be used to
         // determine that this package's tree needs to be updated when
@@ -210,7 +179,7 @@ prototype._write = function (chunk, encoding, callback) {
           })
 
           withRanges.forEach(function (range) {
-            batch.push({
+            updatedBatch.push({
               key: encodeKey(
                 DEPENDENCY_PREFIX,
                 dependencyName,
@@ -223,17 +192,24 @@ prototype._write = function (chunk, encoding, callback) {
           })
         })
 
-        // Update trees for packages that directly and indirectly
-        // depend on the updated package.
-        self._findDependents(
-          packed, updatedName, updatedVersion,
-          ifError(callback, function (dependents) {
-            asyncEach(dependents, batchUpdatedTree, callback)
+        completeBatch(updatedBatch)
+
+        self._levelup.batch(
+          updatedBatch,
+          ifError(callback, function () {
+            // Update trees for packages that directly and indirectly
+            // depend on the updated package.
+            self._findDependents(
+              packed, updatedName, updatedVersion,
+              ifError(callback, function (dependents) {
+                asyncEach(dependents, writeUpdatedTree, callback)
+              })
+            )
           })
         )
 
         // Generate an updated tree for a dependent.
-        function batchUpdatedTree (record, done) {
+        function writeUpdatedTree (record, done) {
           var dependent = record.dependent
           var name = dependent.name
           var version = dependent.version
@@ -278,9 +254,11 @@ prototype._write = function (chunk, encoding, callback) {
                 treeClone
               )
               sortFlatTree(result)
-              pushTreeRecords(name, version, result)
 
-              done()
+              var dependentBatch = []
+              pushTreeRecords(dependentBatch, name, version, result)
+              completeBatch(dependentBatch)
+              self._levelup.batch(dependentBatch, done)
             })
           )
         }
@@ -575,4 +553,16 @@ function ifError (onError, onSuccess) {
       onSuccess.apply(null, slice.call(arguments, 1))
     }
   }
+}
+
+function completeBatch (batch) {
+  batch.forEach(function (operation) {
+    // Make operations put operations by default.
+    operation.type = 'put'
+    // Set a placeholder for key-only records.
+    // These are used for indexing.
+    if (!operation.hasOwnProperty('value')) {
+      operation.value = ''
+    }
+  })
 }
