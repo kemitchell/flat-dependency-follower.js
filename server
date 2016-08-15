@@ -9,18 +9,13 @@ var url = require('url')
 var changes = new ChangesStream({
   db: 'https://replicate.npmjs.com',
   include_docs: true,
-  since: process.argv[2]
-  ? parseInt(process.argv[2])
-  : 1
+  since: process.argv[2] ? parseInt(process.argv[2]) : 1
 })
 
-var levelup = level(
-  process.env.LEVELDB || 'follower.leveldb',
-  {valueEncoding: 'json'}
-)
+var LEVEL = process.env.LEVELDB || 'follower.leveldb'
+var levelup = level(LEVEL, {valueEncoding: 'json'})
 
 var follower = new Follower(levelup)
-
 var log = pino()
 
 changes
@@ -29,9 +24,6 @@ changes
 .on('error', logError)
 .on('missing', function (info) {
   log.warn(info, 'missing')
-})
-.on('ignored', function (info) {
-  log.warn(info, 'ignored')
 })
 .on('sequence', function (sequence) {
   log.warn({sequence: sequence})
@@ -43,9 +35,10 @@ function logError (error) {
 
 var PACKAGE_PATH = new RegExp(
   '^' +
-  '/package/([^/]+)' +
-  '/([^/]+)' +
-  '(/([1-9][0-9]+))?' +
+  '/package' +
+  '/([^/]+)' + // package name
+  '/([^/]+)' + // package version
+  '(/([1-9][0-9]+))?' + // optional sequence
   '$'
 )
 
@@ -55,8 +48,8 @@ http.createServer(function (request, response) {
     response.end()
     return
   }
-  var parsed = url.parse(request.url)
-  var pathname = parsed.pathname
+
+  var pathname = url.parse(request.url).pathname
   if (pathname === '/sequence') {
     response.end(JSON.stringify(follower.sequence()))
   } else if (pathname.indexOf('/package/') === 0) {
@@ -90,6 +83,7 @@ http.createServer(function (request, response) {
   } else {
     notFound()
   }
+
   function notFound () {
     response.statusCode = 404
     response.end()
