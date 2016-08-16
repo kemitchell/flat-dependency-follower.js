@@ -63,6 +63,7 @@ module.exports = FlatDependencyFollower
 //
 // `prototype._findDependents` uses these keys to identify existing
 // package trees that need to be updated.
+var UPDATE_PREFIX = 'update'
 var TREE_PREFIX = 'tree'
 var POINTER_PREFIX = 'pointer'
 var DEPENDENCY_PREFIX = 'dependency'
@@ -94,7 +95,7 @@ prototype._write = function (chunk, encoding, callback) {
 
   normalize(chunk)
   var updatedName = chunk.name
-  var updateKey = encodeKey('update', updatedName)
+  var updateKey = encodeKey(UPDATE_PREFIX, updatedName)
   debug('name: %s', updatedName)
 
   var packed = packInteger(sequence)
@@ -618,7 +619,7 @@ prototype.query = function (name, version, sequence, callback) {
 prototype.versions = function (name, callback) {
   debug('versions %s', name)
   var self = this
-  var key = encodeKey('update', name)
+  var key = encodeKey(UPDATE_PREFIX, name)
   self._levelup.get(key, function (error, data) {
     if (error) {
       /* istanbul ignore else */
