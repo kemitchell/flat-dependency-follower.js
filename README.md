@@ -62,6 +62,9 @@ registry and serves data via HTTP.
 
 Useful request paths include:
 
+- `GET /package/{name}` serves a JSON array of package versions known
+   to the follower.
+
 - `GET /package/{name}/{version}{/sequence}`, where `sequence` is the
   server's current sequence by default.  Serves a flat dependency tree,
   if any, as JSON.
