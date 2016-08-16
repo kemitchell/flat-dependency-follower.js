@@ -259,10 +259,19 @@ prototype._write = function (chunk, encoding, callback) {
               var dependentBatch = []
               pushTreeRecords(dependentBatch, name, version, result)
               completeBatch(dependentBatch)
-              self._levelup.batch(dependentBatch, function (error) {
-                dependentBatch = null
-                done(error)
-              })
+              self._levelup.batch(
+                dependentBatch,
+                // Have LevelUP `fsync` data to disk before returning,
+                // rather than just handing over to the operating
+                // system.  This is _much_ slower, but might help avoid
+                // flooding memory for packages, like flint-tools, that
+                // have tons and tons of versions.
+                {sync: true},
+                function (error) {
+                  dependentBatch = null
+                  done(error)
+                }
+              )
             })
           )
         }
