@@ -41,24 +41,24 @@ module.exports = FlatDependencyFollower
 //
 // Last Updates
 //
-//     update/$name -> [{version, dependencies}, ...]
+//     update/{name} -> [{version, dependencies}, ...]
 //
 // Dependency Trees
 //
-//     tree/$name/$sequence/$version -> Array
+//     tree/{name}/{sequence}/{version} -> Array
 //
 // These records store the precomputed flat package trees.  The prefix
 // leads with sequence, rather than version, because Semantic Versions
 // strings aren't lexicographically ordered.
 //
-//     pointer/$name/$version/$sequence
+//     pointer/{name}/{version}/{sequence}
 //
 // `prototype.query` uses these "pointer" keys to find the last tree
 // record key for a package by sequence number.
 //
 // Dependency Relationships
 //
-//     dependency/$dependency/$sequence/$range/$dependent/$version
+//     dependency/{dependency}/{sequence}/{range}/{dependent}/{version}
 //
 // `prototype._findDependents` uses these keys to identify existing
 // package trees that need to be updated.
