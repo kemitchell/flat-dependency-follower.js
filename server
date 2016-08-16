@@ -41,7 +41,7 @@ var PACKAGE_PATH = new RegExp(
   '^' +
   '/package' +
   '/([^/]+)' + // package name
-  '/([^/]+)' + // package version
+  '(/([^/]+))?' + // optional package version
   '(/([1-9][0-9]+))?' + // optional sequence
   '$'
 )
@@ -60,32 +60,53 @@ http.createServer(function (request, response) {
     var match = PACKAGE_PATH.exec(pathname)
     if (match) {
       var name = decodeURIComponent(match[1])
-      var version = decodeURIComponent(match[2])
-      var sequence = Math.floor(Number(match[4])) || follower.sequence()
-      follower.query(name, version, sequence, function (error, tree) {
-        if (error) {
-          response.statusCode = 500
-          response.end()
-        } else {
-          if (!tree) {
-            notFound()
+      if (match[3]) {
+        var version = decodeURIComponent(match[3])
+        var sequence = (
+          Math.floor(Number(match[5])) ||
+          follower.sequence()
+        )
+        follower.query(name, version, sequence, function (error, tree) {
+          if (error) {
+            internalError()
           } else {
-            response.statusCode = 200
-            response.setHeader('Content-Type', 'application/json')
-            response.end(JSON.stringify({
-              package: name,
-              version: version,
-              sequence: sequence,
-              tree: tree
-            }))
+            if (!tree) {
+              notFound()
+            } else {
+              sendJSON({
+                package: name,
+                version: version,
+                sequence: sequence,
+                tree: tree
+              })
+            }
           }
-        }
-      })
+        })
+      } else {
+        follower.versions(name, function (error, versions) {
+          if (error) {
+            internalError()
+          } else {
+            sendJSON(versions)
+          }
+        })
+      }
     } else {
       notFound()
     }
   } else {
     notFound()
+  }
+
+  function sendJSON (object) {
+    response.statusCode = 200
+    response.setHeader('Content-Type', 'application/json')
+    response.end(JSON.stringify(object))
+  }
+
+  function internalError () {
+    response.statusCode = 500
+    response.end()
   }
 
   function notFound () {
