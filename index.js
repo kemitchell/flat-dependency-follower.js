@@ -1,6 +1,7 @@
 var Writable = require('stream').Writable
 var asyncEach = require('async.each')
 var asyncMap = require('async.map')
+var debug = require('debug')('follower')
 var find = require('array-find')
 var inherits = require('util').inherits
 var lexint = require('lexicographic-integer')
@@ -69,6 +70,7 @@ inherits(FlatDependencyFollower, Writable)
 var prototype = FlatDependencyFollower.prototype
 
 prototype._write = function (chunk, encoding, callback) {
+  debug('_write')
   var self = this
   var sequence = chunk.seq
   chunk = chunk.doc
@@ -81,6 +83,7 @@ prototype._write = function (chunk, encoding, callback) {
 
   normalize(chunk)
   var updatedName = chunk.name
+  debug('name: %s', updatedName)
 
   var packed = packInteger(sequence)
 
@@ -114,6 +117,7 @@ prototype._write = function (chunk, encoding, callback) {
 
   function writeVersion (argument, callback) {
     var updatedVersion = argument.updatedVersion
+    debug('writeVersion %s', updatedVersion)
     var ranges = argument.ranges
 
     // Compute the flat package dependency manifest for the new package.
@@ -152,6 +156,7 @@ prototype._write = function (chunk, encoding, callback) {
         // Store the tree.
         pushTreeRecords(updatedBatch, updatedName, updatedVersion, tree)
 
+        debug('pushing index records')
         // Store key-only index records.  These will be used to
         // determine that this package's tree needs to be updated when
         // new versions of any of its dependencies---direct or
@@ -194,15 +199,24 @@ prototype._write = function (chunk, encoding, callback) {
 
         completeBatch(updatedBatch)
 
+        debug(
+          'writing updated tree batch length %d',
+          updatedBatch.length
+        )
         self._levelup.batch(
           updatedBatch,
           ifError(callback, function () {
+            debug('nulling out updated tree batch')
             updatedBatch = null
             // Update trees for packages that directly and indirectly
             // depend on the updated package.
             self._findDependents(
               packed, updatedName, updatedVersion,
               ifError(callback, function (dependents) {
+                debug(
+                  'updating dependents count: %d',
+                  dependents.length
+                )
                 asyncEach(dependents, writeUpdatedTree, callback)
               })
             )
@@ -211,6 +225,7 @@ prototype._write = function (chunk, encoding, callback) {
 
         // Generate an updated tree for a dependent.
         function writeUpdatedTree (record, done) {
+          debug('updating ' + record.name)
           var dependent = record.dependent
           var name = dependent.name
           var version = dependent.version
@@ -219,6 +234,7 @@ prototype._write = function (chunk, encoding, callback) {
           self.query(
             name, version, packed,
             ifError(done, function (result) {
+              debug('queried; cloning tree length %d', tree.length)
               // Create a tree with:
               //
               // 1. the update package
@@ -259,7 +275,15 @@ prototype._write = function (chunk, encoding, callback) {
               var dependentBatch = []
               pushTreeRecords(dependentBatch, name, version, result)
               completeBatch(dependentBatch)
+              debug(
+                'writing updated dependent batch length %d',
+                dependentBatch.length
+              )
               self._levelup.batch(dependentBatch, function (error) {
+                debug(
+                  'wrote updated dependent batch size %d',
+                  dependentBatch.length
+                )
                 dependentBatch = null
                 done(error)
               })
@@ -277,6 +301,7 @@ prototype._treeFor = function (
   sequence, name, version, ranges, callback
 ) {
   var self = this
+  debug('treeFor %s@%s', name, version)
 
   asyncMap(
     // Turn the Object mapping from package name to SemVer range into an
@@ -305,6 +330,7 @@ prototype._treeFor = function (
         self._findMaxSatisfying(
           sequence, dependency.name, dependency.range,
           function (error, result) {
+            debug('found max satisfying')
             if (error) {
               /* istanbul ignore else */
               if (error.noSatisfying) {
@@ -347,8 +373,10 @@ var ZERO = packInteger(0)
 prototype._findMaxSatisfying = function (
   sequence, name, range, callback
 ) {
+  debug('findMaxSatisfying %s@%s#%d', name, range, sequence)
   // Fetch all the trees for the package at the current sequence.
   this._findTrees(sequence, name, ifError(callback, function (records) {
+    debug('found %d', records.length)
     // Find the tree that corresponds to the highest SemVer that
     // satisfies our target range.
     var versions = records.map(function (record) {
@@ -406,6 +434,7 @@ prototype._findMaxSatisfying = function (
 
 // Find all stored trees for a package at or before a given sequence.
 prototype._findTrees = function (sequence, name, callback) {
+  debug('findTrees %s#%s', name, sequence)
   var matches = []
   this._levelup.createReadStream({
     gt: encodeKey(TREE_PREFIX, name, ZERO, ''),
@@ -434,6 +463,7 @@ prototype._findTrees = function (sequence, name, callback) {
 prototype._findDependents = function (
   sequence, name, version, callback
 ) {
+  debug('findDependents %s@%s#%s', name, version, sequence)
   var matches = []
   this._levelup.createReadStream({
     // Encode the low LevelUP key with an empty string suffix so
@@ -475,6 +505,7 @@ prototype._findDependents = function (
 // Get the flat dependency graph for a package and version at a specific
 // sequence number.
 prototype.query = function (name, version, sequence, callback) {
+  debug('query %s@%s#%s', name, version, sequence)
   var self = this
   if (typeof sequence === 'number') {
     sequence = packInteger(sequence)
