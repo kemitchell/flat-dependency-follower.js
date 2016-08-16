@@ -343,6 +343,52 @@ tape('no matching version', function (test) {
   })
 })
 
+tape('versions(existing)', function (test) {
+  var follower = testFollower([
+    {name: 'x', versions: {'1.0.0': {}, '2.0.0': {}}}
+  ])
+  .once('finish', function () {
+    follower.versions('x', function (error, versions) {
+      test.ifError(error)
+      test.deepEqual(
+        versions, ['1.0.0', '2.0.0'],
+        'yields versions array'
+      )
+    })
+    test.end()
+  })
+})
+
+tape('versions after multiple updates', function (test) {
+  var follower = testFollower([
+    {name: 'x', versions: {'1.0.0': {}}},
+    {name: 'x', versions: {'1.0.0': {}, '2.0.0': {}}}
+  ])
+  .once('finish', function () {
+    follower.versions('x', function (error, versions) {
+      test.ifError(error)
+      test.deepEqual(
+        versions, ['1.0.0', '2.0.0'],
+        'yields versions array'
+      )
+      test.end()
+    })
+  })
+})
+
+tape('versions(unknown)', function (test) {
+  var follower = testFollower([
+    {name: 'x', versions: {'1.0.0': {}, '2.0.0': {}}}
+  ])
+  .once('finish', function () {
+    follower.versions('y', function (error, versions) {
+      test.ifError(error)
+      test.deepEqual(versions, null, 'yields null')
+    })
+    test.end()
+  })
+})
+
 tape('dependency appears later', function (test) {
   var follower = testFollower([
     {name: 'x', versions: {'1.0.0': {dependencies: {y: '^1.0.0'}}}},

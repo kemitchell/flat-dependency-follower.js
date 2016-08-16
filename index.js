@@ -1,11 +1,13 @@
 var Writable = require('stream').Writable
 var asyncEach = require('async.each')
 var asyncMap = require('async.map')
+var deepEqual = require('deep-equal')
 var find = require('array-find')
 var inherits = require('util').inherits
 var lexint = require('lexicographic-integer')
-var normalize = require('normalize-registry-metadata')
 var mergeFlatTrees = require('merge-flat-package-trees')
+var normalize = require('normalize-registry-metadata')
+var runSeries = require('run-series')
 var semver = require('semver')
 var sortFlatTree = require('sort-flat-package-tree')
 var updateFlatTree = require('update-flat-package-tree')
@@ -15,6 +17,11 @@ module.exports = FlatDependencyFollower
 // A Note on Terminology
 //
 // Throughout this package:
+//
+// - An "update" is a CouchDB replication-style JSON blob received from
+//   the npm public registry.
+//
+// - A "sequence number" is an integer `.seq` property of an update.
 //
 // - When A depends on B, A is the "dependent", B is the "dependency".
 //
@@ -31,6 +38,10 @@ module.exports = FlatDependencyFollower
 // create meaningful prefixes.  Components are encoded URI-style, with
 // slashes and %-codes.  lexicographic-integer encodes sequence number
 // integers to hex.
+//
+// Last Updates
+//
+//     update/$name -> [{version, dependencies}, ...]
 //
 // Dependency Trees
 //
@@ -81,6 +92,7 @@ prototype._write = function (chunk, encoding, callback) {
 
   normalize(chunk)
   var updatedName = chunk.name
+  var updateKey = encodeKey('update', updatedName)
 
   var packed = packInteger(sequence)
 
@@ -100,17 +112,75 @@ prototype._write = function (chunk, encoding, callback) {
     })
   }
 
-  var versions = []
-  Object.keys(chunk.versions)
-  .forEach(function (updatedVersion) {
-    versions.push({
-      updatedVersion: updatedVersion,
-      ranges: chunk.versions[updatedVersion].dependencies || {}
-    })
-  })
+  var lastUpdate = null
 
-  // Iterate versions of the package in the update.
-  asyncEach(versions, writeVersion, ifError(callback, finish))
+  runSeries(
+    [
+      // Read the last saved update, which we will compare with the
+      // current update to identify changed versions.
+      getLastUpdate,
+
+      // Identify changed versions and process them.
+      function (done) {
+        // Turn the {$version: $object} map into an array.
+        var versions = Object.keys(chunk.versions)
+        .map(function propertyToArrayElement (updatedVersion) {
+          return {
+            updatedVersion: updatedVersion,
+            ranges: chunk.versions[updatedVersion].dependencies || {}
+          }
+        })
+        // Filter out versions that haven't changed since the last
+        // update for this package.
+        .filter(function sameAsLastUpdate (newUpdate) {
+          return !lastUpdate.some(function (priorUpdate) {
+            return (
+              priorUpdate.updatedVersion === newUpdate.updatedVersion &&
+              deepEqual(priorUpdate.ranges, newUpdate.ranges)
+            )
+          })
+        })
+
+        lastUpdate = null
+
+        // Process changed versions.
+        asyncEach(versions, writeVersion, done)
+      },
+
+      // Overwrite the update record for this package, so we can compare
+      // it to the next update for this package later.
+      putUpdate
+    ],
+    ifError(callback, finish)
+  )
+
+  function getLastUpdate (callback) {
+    self._levelup.get(updateKey, function (error, result) {
+      if (error) {
+        /* istanbul ignore else */
+        if (error.notFound) {
+          lastUpdate = []
+          callback()
+        } else {
+          callback(error)
+        }
+      } else {
+        lastUpdate = result
+        callback()
+      }
+    })
+  }
+
+  function putUpdate (callback) {
+    var value = Object.keys(chunk.versions)
+    .map(function (version) {
+      return {
+        updatedVersion: version,
+        ranges: chunk.versions[version].dependencies
+      }
+    }, [])
+    self._levelup.put(updateKey, value, callback)
+  }
 
   function writeVersion (argument, callback) {
     var updatedVersion = argument.updatedVersion
@@ -510,6 +580,27 @@ prototype.query = function (name, version, sequence, callback) {
   })
   .once('end', function () {
     callback(null, null, null)
+  })
+}
+
+// Get all currently know versions of a package, by name.
+prototype.versions = function (name, callback) {
+  var self = this
+  var key = encodeKey('update', name)
+  self._levelup.get(key, function (error, data) {
+    if (error) {
+      /* istanbul ignore else */
+      if (error.notFound) {
+        callback(null, null)
+      } else {
+        callback(error)
+      }
+    } else {
+      var versions = data.map(function (element) {
+        return element.updatedVersion
+      })
+      callback(null, versions)
+    }
   })
 }
 
