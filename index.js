@@ -279,14 +279,23 @@ prototype._write = function (chunk, encoding, callback) {
                 'writing updated dependent batch length %d',
                 dependentBatch.length
               )
-              self._levelup.batch(dependentBatch, function (error) {
-                debug(
-                  'wrote updated dependent batch size %d',
-                  dependentBatch.length
-                )
-                dependentBatch = null
-                done(error)
-              })
+              self._levelup.batch(
+                dependentBatch,
+                // Have LevelUP `fsync` data to disk before returning,
+                // rather than just handing over to the operating
+                // system.  This is _much_ slower, but might help avoid
+                // flooding memory for packages, like flint-tools, that
+                // have tons and tons of versions.
+                {sync: true},
+                function (error) {
+                  debug(
+                    'wrote updated dependent batch size %d',
+                    dependentBatch.length
+                  )
+                  dependentBatch = null
+                  done(error)
+                }
+              )
             })
           )
         }
