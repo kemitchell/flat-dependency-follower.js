@@ -452,7 +452,7 @@ var ZERO = packInteger(0)
 prototype._findMaxSatisfying = function (
   sequence, name, range, callback
 ) {
-  debug('findMaxSatisfying %s@%s#%d', name, range, sequence)
+  debug('findMaxSatisfying %s@%s#%s', name, range, sequence)
   // Fetch all the trees for the package at the current sequence.
   this._findTrees(sequence, name, ifError(callback, function (records) {
     debug('found %d', records.length)
