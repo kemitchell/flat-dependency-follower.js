@@ -197,6 +197,7 @@ prototype._write = function (chunk, encoding, callback) {
         self._levelup.batch(
           updatedBatch,
           ifError(callback, function () {
+            updatedBatch = null
             // Update trees for packages that directly and indirectly
             // depend on the updated package.
             self._findDependents(
@@ -258,7 +259,10 @@ prototype._write = function (chunk, encoding, callback) {
               var dependentBatch = []
               pushTreeRecords(dependentBatch, name, version, result)
               completeBatch(dependentBatch)
-              self._levelup.batch(dependentBatch, done)
+              self._levelup.batch(dependentBatch, function (error) {
+                dependentBatch = null
+                done(error)
+              })
             })
           )
         }
