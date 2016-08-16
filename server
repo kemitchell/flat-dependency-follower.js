@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 var ChangesStream = require('changes-stream')
 var Follower = require('./')
+var heapdump = require('heapdump')
 var http = require('http')
 var level = require('level')
 var pino = require('pino')
@@ -34,6 +35,9 @@ changes
   log.warn(info, 'ignored')
 })
 .on('sequence', function (sequence) {
+  if (sequence % 10000 === 0) {
+    heapdump.writeSnapshot()
+  }
   log.warn({sequence: sequence})
 })
 
