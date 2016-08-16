@@ -83,7 +83,11 @@ http.createServer(function (request, response) {
           if (error) {
             internalError()
           } else {
-            sendJSON(versions)
+            if (versions === null) {
+              notFound()
+            } else {
+              sendJSON(versions)
+            }
           }
         })
       }
