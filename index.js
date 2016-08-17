@@ -296,10 +296,10 @@ prototype._write = function (chunk, encoding, callback) {
 
         // Generate an updated tree for a dependent.
         function writeUpdatedTree (record, done) {
-          debug('updating ' + record.name)
           var dependent = record.dependent
           var name = dependent.name
           var version = dependent.version
+          debug('updating %s@%s', name, version)
 
           // Find the most current tree for the package.
           self.query(
