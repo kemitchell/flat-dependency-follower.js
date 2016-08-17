@@ -98,6 +98,14 @@ prototype._write = function (chunk, encoding, callback) {
   var updateKey = encodeKey(UPDATE_PREFIX, updatedName)
   debug('name: %s', updatedName)
 
+  /* istanbul ignore if */
+  if (updatedName.indexOf('flint-') === 0) {
+    self.emit('ignoring', updatedName)
+    self._sequence = sequence
+    self.emit('sequence', sequence)
+    return callback()
+  }
+
   var packed = packInteger(sequence)
 
   function finish () {
