@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 var ChangesStream = require('changes-stream')
 var Follower = require('./')
+var fs = require('fs')
 var http = require('http')
 var level = require('level')
 var pino = require('pino')
@@ -15,7 +16,16 @@ var changes = new ChangesStream({
 var LEVEL = process.env.LEVELDB || 'follower.leveldb'
 var levelup = level(LEVEL, {valueEncoding: 'json'})
 
-var follower = new Follower(levelup)
+var SEQUENCE = process.env.SEQUENCE || 'sequence'
+var from = null
+try {
+  var read = fs.readFileSync(SEQUENCE)
+  from = parseInt(read)
+} catch (error) {
+  from = 0
+}
+
+var follower = new Follower(levelup, from)
 var log = pino()
 
 changes
@@ -26,7 +36,8 @@ changes
   log.warn(info, 'missing')
 })
 .on('sequence', function (sequence) {
-  log.warn({sequence: sequence})
+  log.info({sequence: sequence})
+  fs.writeFile(SEQUENCE, String(sequence))
 })
 
 function logError (error) {
