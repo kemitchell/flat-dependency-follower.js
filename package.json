@@ -5,7 +5,6 @@
   "author": "Kyle E. Mitchell <kyle@kemitchell.com> (https://kemitchell.com/)",
   "bin": "server",
   "dependencies": {
-    "array-find": "^1.0.0",
     "async.each": "^0.5.2",
     "async.map": "^0.5.2",
     "changes-stream": "^1.1.0",
