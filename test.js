@@ -327,6 +327,27 @@ tape('y@1.0.0 ; x -> y@^1.0.0 and z@git', function (test) {
   })
 })
 
+tape('x@1 -> y@1; x@2 -> y@2', function (test) {
+  var follower = testFollower([
+    {name: 'y', versions: {'1.0.0': {dependencies: {}}}},
+    {name: 'x', versions: {'1.0.0': {dependencies: {y: '^1.0.0'}}}},
+    {name: 'y', versions: {'2.0.0': {dependencies: {}}}},
+    {name: 'x', versions: {'2.0.0': {dependencies: {y: '^2.0.0'}}}}
+  ])
+  .once('finish', function () {
+    follower.query('x', '2.0.0', 4, function (error, tree, sequence) {
+      test.ifError(error, 'no error')
+      test.equal(sequence, 4, 'sequence is 4')
+      test.deepEqual(
+        tree,
+        [{name: 'y', version: '2.0.0', range: '^2.0.0', links: []}],
+        'yields tree'
+      )
+      test.end()
+    })
+  })
+})
+
 tape('no matching version', function (test) {
   testFollower([
     {name: 'y', versions: {'1.0.0': {dependencies: {}}}},
