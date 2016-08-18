@@ -387,7 +387,7 @@ prototype._treeFor = function (
       } else {
         // ...find the dependency tree for the highest version that
         // satisfies the range.
-        self._findMaxSatisfying(
+        self._maxSatisfying(
           sequence, dependency.name, dependency.range,
           function (error, result) {
             if (error) {
@@ -429,9 +429,7 @@ var ZERO = packInteger(0)
 
 // Find the tree for the highest package version that satisfies a given
 // SemVer range.
-prototype._findMaxSatisfying = function (
-  sequence, name, range, callback
-) {
+prototype._maxSatisfying = function (sequence, name, range, callback) {
   var maxSatisfying = null
   pump(
     this._createTreeStream(sequence, name),
