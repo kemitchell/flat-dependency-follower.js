@@ -2,7 +2,6 @@ var Writable = require('stream').Writable
 var asyncEach = require('async.each')
 var asyncMap = require('async.map')
 var deepEqual = require('deep-equal')
-var find = require('array-find')
 var inherits = require('util').inherits
 var lexint = require('lexicographic-integer')
 var mergeFlatTrees = require('merge-flat-package-trees')
@@ -433,18 +432,27 @@ var ZERO = packInteger(0)
 prototype._findMaxSatisfying = function (
   sequence, name, range, callback
 ) {
-  // Fetch all the trees for the package at the current sequence.
-  this._findTrees(sequence, name, ifError(callback, function (records) {
-    // Find the tree that corresponds to the highest SemVer that
-    // satisfies our target range.
-    var versions = records.map(function (record) {
-      return record.version
+  var maxSatisfying = null
+  pump(
+    this._createTreeStream(sequence, name),
+    to.obj(function (record, _, done) {
+      var higherSatisfying = (
+        semver.satisfies(record.version, range) &&
+        (
+          maxSatisfying === null ||
+          semver.compare(maxSatisfying.version, record.version) === -1
+        )
+      )
+      if (higherSatisfying) {
+        maxSatisfying = record
+      }
+      done()
     })
-    var max = semver.maxSatisfying(versions, range)
-
+  )
+  .once('finish', function () {
     // If there isn't a match, yield an informative error with
     // structured data about the failed query.
-    if (max === null) {
+    if (maxSatisfying === null) {
       callback({
         noSatisfying: true,
         dependency: {
@@ -454,19 +462,16 @@ prototype._findMaxSatisfying = function (
       })
     // Have a tree for a package version that satisfied the range.
     } else {
-      var matching = find(records, function (record) {
-        return record.version === max
-      })
-
       // Create a new tree with just a record for the top-level package.
       // The new records links to all direct dependencies in the tree.
       var treeWithDependency = [
         {
           name: name,
-          version: max,
+          version: maxSatisfying.version,
           range: range,
           // Link to all direct dependencies.
-          links: matching.tree.reduce(function (links, dependency) {
+          links: maxSatisfying.tree
+          .reduce(function (links, dependency) {
             return dependency.range
             ? links.concat({
               name: dependency.name,
@@ -479,39 +484,34 @@ prototype._findMaxSatisfying = function (
       ]
 
       // Demote direct dependencies to indirect dependencies.
-      matching.tree.forEach(function (dependency) {
+      maxSatisfying.tree.forEach(function (dependency) {
         delete dependency.range
       })
 
-      mergeFlatTrees(matching.tree, treeWithDependency)
-      sortFlatTree(matching.tree)
-      callback(null, matching.tree)
+      mergeFlatTrees(maxSatisfying.tree, treeWithDependency)
+      sortFlatTree(maxSatisfying.tree)
+      callback(null, maxSatisfying.tree)
     }
-  }))
+  })
 }
 
 // Find all stored trees for a package at or before a given sequence.
-prototype._findTrees = function (sequence, name, callback) {
-  var matches = []
-  this._levelup.createReadStream({
-    gt: encodeKey(TREE_PREFIX, name, ZERO, ''),
-    lt: encodeKey(TREE_PREFIX, name, sequence, '~'),
-    reverse: true
-  })
-  .once('error', /* istanbul ignore next */ function (error) {
-    callback(error)
-  })
-  .on('data', function (data) {
-    var decoded = decodeKey(data.key)
-    matches.push({
-      version: decoded[3],
-      sequence: unpackInteger(decoded[2]),
-      tree: data.value
+prototype._createTreeStream = function (sequence, name) {
+  return pump(
+    this._levelup.createReadStream({
+      gt: encodeKey(TREE_PREFIX, name, ZERO, ''),
+      lt: encodeKey(TREE_PREFIX, name, sequence, '~'),
+      reverse: true
+    }),
+    through.obj(function (data, _, done) {
+      var decoded = decodeKey(data.key)
+      done(null, {
+        version: decoded[3],
+        sequence: unpackInteger(decoded[2]),
+        tree: data.value
+      })
     })
-  })
-  .once('end', function () {
-    callback(null, matches)
-  })
+  )
 }
 
 // Use key-only index records to find all direct and indirect dependents

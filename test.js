@@ -23,6 +23,28 @@ tape('x -> y', function (test) {
   })
 })
 
+tape('y@2; y@10; x -> y@*', function (test) {
+  var follower = testFollower([
+    // Lexicographically: 2.0.0 > 10.0.0
+    // SemVer:            2.0.0 < 10.0.0
+    {name: 'y', versions: {'2.0.0': {dependencies: {}}}},
+    {name: 'y', versions: {'10.0.0': {dependencies: {}}}},
+    {name: 'x', versions: {'1.0.0': {dependencies: {y: '*'}}}}
+  ])
+  .once('finish', function () {
+    follower.query('x', '1.0.0', 3, function (error, tree, sequence) {
+      test.ifError(error, 'no error')
+      test.equal(sequence, 3, 'sequence is 3')
+      test.deepEqual(
+        tree,
+        [{name: 'y', version: '10.0.0', range: '*', links: []}],
+        'yields tree'
+      )
+      test.end()
+    })
+  })
+})
+
 tape('x -> y -> z', function (test) {
   var follower = testFollower([
     {name: 'z', versions: {'1.0.0': {dependencies: {}}}},
