@@ -8,9 +8,12 @@ var inherits = require('util').inherits
 var lexint = require('lexicographic-integer')
 var mergeFlatTrees = require('merge-flat-package-trees')
 var normalize = require('normalize-registry-metadata')
+var pump = require('pump')
 var runSeries = require('run-series')
 var semver = require('semver')
 var sortFlatTree = require('sort-flat-package-tree')
+var through = require('through2')
+var to = require('flush-write-stream')
 var updateFlatTree = require('update-flat-package-tree')
 
 module.exports = FlatDependencyFollower
@@ -289,16 +292,15 @@ prototype._write = function (chunk, encoding, callback) {
             updatedBatch = null
             // Update trees for packages that directly and indirectly
             // depend on the updated package.
-            self._findDependents(
-              packed, updatedName, updatedVersion,
-              ifError(callback, function (dependents) {
-                debug(
-                  'updating dependents count: %d',
-                  dependents.length
-                )
-                asyncEach(dependents, writeUpdatedTree, callback)
+            pump(
+              self._createDependentsStream(
+                packed, updatedName, updatedVersion
+              ),
+              to.obj(function (chunk, _, done) {
+                writeUpdatedTree(chunk, done)
               })
             )
+            .once('finish', callback)
           })
         )
 
@@ -548,44 +550,40 @@ prototype._findTrees = function (sequence, name, callback) {
 // Use key-only index records to find all direct and indirect dependents
 // on a specific version of a specific package at or before a given
 // sequence number.
-prototype._findDependents = function (
-  sequence, name, version, callback
-) {
+prototype._createDependentsStream = function (sequence, name, version) {
   debug('findDependents %s@%s#%s', name, version, sequence)
-  var matches = []
-  this._levelup.createReadStream({
-    // Encode the low LevelUP key with an empty string suffix so
-    // `encodeKey` will append the component separator, a slash.
-    gt: encodeKey(DEPENDENCY_PREFIX, name, ZERO, ''),
-    // LevelUP key components are URI-encoded ASCII, so the tilde
-    // character is high.
-    lt: encodeKey(DEPENDENCY_PREFIX, name, sequence, '~'),
-    keys: true,
-    // There are no meaningful values, so we can skip them.
-    values: false
-  })
-  .once('error', /* istanbul ignore next */ function (error) {
-    callback(error)
-  })
-  .on('data', function decodeLevelUPKey (key) {
-    var decoded = decodeKey(key)
-    matches.push({
-      sequence: decoded[2],
-      dependency: {
-        name: decoded[1],
-        range: decoded[3]
-      },
-      dependent: {
-        name: decoded[4],
-        version: decoded[5]
+  return pump(
+    this._levelup.createReadStream({
+      // Encode the low LevelUP key with an empty string suffix so
+      // `encodeKey` will append the component separator, a slash.
+      gt: encodeKey(DEPENDENCY_PREFIX, name, ZERO, ''),
+      // LevelUP key components are URI-encoded ASCII, so the tilde
+      // character is high.
+      lt: encodeKey(DEPENDENCY_PREFIX, name, sequence, '~'),
+      keys: true,
+      // There are no meaningful values, so we can skip them.
+      values: false
+    }),
+    through.obj(function (key, _, done) {
+      var decoded = decodeKey(key)
+      var range = decoded[3]
+      if (semver.satisfies(version, range)) {
+        done(null, {
+          sequence: decoded[2],
+          dependency: {
+            name: decoded[1],
+            range: range
+          },
+          dependent: {
+            name: decoded[4],
+            version: decoded[5]
+          }
+        })
+      } else {
+        done()
       }
     })
-  })
-  .once('end', function filterSatisfyingVersions () {
-    callback(null, matches.filter(function (match) {
-      return semver.satisfies(version, match.dependency.range)
-    }))
-  })
+  )
 }
 
 // Public API
