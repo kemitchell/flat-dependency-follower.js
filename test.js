@@ -432,6 +432,25 @@ tape('versions(unknown)', function (test) {
   })
 })
 
+tape('list package names', function (test) {
+  var follower = testFollower([
+    {name: 'x', versions: {'1.0.0': {}}},
+    {name: 'y', versions: {'1.0.0': {}}},
+    {name: 'z', versions: {'1.0.0': {}}}
+  ])
+  .once('finish', function () {
+    var buffer = []
+    follower.packages()
+    .on('data', function (chunk) {
+      buffer.push(chunk)
+    })
+    .once('end', function () {
+      test.deepEqual(buffer, ['x', 'y', 'z'], 'streams names')
+      test.end()
+    })
+  })
+})
+
 tape('dependency appears later', function (test) {
   var follower = testFollower([
     {name: 'x', versions: {'1.0.0': {dependencies: {y: '^1.0.0'}}}},

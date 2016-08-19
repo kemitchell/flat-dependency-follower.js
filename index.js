@@ -589,6 +589,7 @@ prototype.versions = function (name, callback) {
   var self = this
   var key = encodeKey(UPDATE_PREFIX, name)
   self._levelup.get(key, function (error, data) {
+    console.log(data)
     if (error) {
       /* istanbul ignore else */
       if (error.notFound) {
@@ -603,6 +604,22 @@ prototype.versions = function (name, callback) {
       callback(null, versions)
     }
   })
+}
+
+// Get all currently known package names.
+prototype.packages = function (name) {
+  return pump(
+    this._levelup.createReadStream({
+      gt: encodeKey(UPDATE_PREFIX, ''),
+      lte: encodeKey(UPDATE_PREFIX, '~'),
+      keys: true,
+      values: false
+    }),
+    through.obj(function (key, _, done) {
+      var decoded = decodeKey(key)
+      done(null, decoded[1])
+    })
+  )
 }
 
 // Get the last-processed sequence number.

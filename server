@@ -5,6 +5,8 @@ var fs = require('fs')
 var http = require('http')
 var level = require('level')
 var pino = require('pino')
+var pump = require('pump')
+var through = require('through2')
 var url = require('url')
 
 var changes = new ChangesStream({
@@ -46,7 +48,7 @@ function logError (error) {
 
 var PACKAGE_PATH = new RegExp(
   '^' +
-  '/package' +
+  '/packages' +
   '/([^/]+)' + // package name
   '(/([^/]+))?' + // optional package version
   '(/([1-9][0-9]+))?' + // optional sequence
@@ -63,7 +65,15 @@ http.createServer(function (request, response) {
   var pathname = url.parse(request.url).pathname
   if (pathname === '/sequence') {
     response.end(JSON.stringify(follower.sequence()))
-  } else if (pathname.indexOf('/package/') === 0) {
+  } else if (pathname === '/packages') {
+    pump(
+      follower.packages(),
+      through.obj(function (name, _, done) {
+        done(null, name + '\n')
+      }),
+      response
+    )
+  } else if (pathname.indexOf('/packages/') === 0) {
     var match = PACKAGE_PATH.exec(pathname)
     if (match) {
       var name = decodeURIComponent(match[1])
