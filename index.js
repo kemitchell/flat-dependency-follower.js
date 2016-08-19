@@ -2,6 +2,7 @@ var Writable = require('stream').Writable
 var asyncEach = require('async.each')
 var asyncMap = require('async.map')
 var deepEqual = require('deep-equal')
+var ecb = require('ecb')
 var inherits = require('util').inherits
 var lexint = require('lexicographic-integer')
 var mergeFlatTrees = require('merge-flat-package-trees')
@@ -154,7 +155,7 @@ prototype._write = function (chunk, encoding, callback) {
       // it to the next update for this package later.
       putUpdate
     ],
-    ifError(callback, finish)
+    ecb(callback, finish)
   )
 
   function getLastUpdate (callback) {
@@ -192,7 +193,7 @@ prototype._write = function (chunk, encoding, callback) {
     // Compute the flat package dependency manifest for the new package.
     self._treeFor(
       packed, updatedName, updatedVersion, ranges,
-      ifError(callback, function (tree) {
+      ecb(callback, function (tree) {
         var missingDependencies = tree.filter(function (dependency) {
           return dependency.hasOwnProperty('missing')
         })
@@ -269,7 +270,7 @@ prototype._write = function (chunk, encoding, callback) {
 
         self._levelup.batch(
           updatedBatch,
-          ifError(callback, function () {
+          ecb(callback, function () {
             updatedBatch = null
             // Update trees for packages that directly and indirectly
             // depend on the updated package.
@@ -294,7 +295,7 @@ prototype._write = function (chunk, encoding, callback) {
           // Find the most current tree for the package.
           self.query(
             name, version, packed,
-            ifError(done, function (result) {
+            ecb(done, function (result) {
               // Create a tree with:
               //
               // 1. the update package
@@ -413,7 +414,7 @@ prototype._treeFor = function (
     },
 
     // Once we have trees for dependencies...
-    ifError(callback, function (dependencyTrees) {
+    ecb(callback, function (dependencyTrees) {
       // ...combine them to form a new tree.
       var combinedTree = []
       dependencyTrees.forEach(function (tree) {
@@ -575,7 +576,7 @@ prototype.query = function (name, version, sequence, callback) {
     readStream.destroy()
     var at = decoded[3]
     var resolvedKey = encodeKey(TREE_PREFIX, name, at, version)
-    self._levelup.get(resolvedKey, ifError(callback, function (tree) {
+    self._levelup.get(resolvedKey, ecb(callback, function (tree) {
       callback(null, tree, unpackInteger(at))
     }))
   })
@@ -663,18 +664,6 @@ function validName (argument) {
 
 function validVersions (argument) {
   return typeof argument === 'object'
-}
-
-function ifError (onError, onSuccess) {
-  return function (/* variadic */) {
-    var error = arguments[0]
-    /* istanbul ignore if */
-    if (error) {
-      onError.apply(null, arguments)
-    } else {
-      onSuccess.apply(null, slice.call(arguments, 1))
-    }
-  }
 }
 
 function completeBatch (batch) {

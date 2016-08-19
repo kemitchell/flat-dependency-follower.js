@@ -9,6 +9,7 @@
     "async.map": "^0.5.2",
     "changes-stream": "^1.1.0",
     "deep-equal": "^1.0.1",
+    "ecb": "^1.0.0",
     "flush-write-stream": "^1.0.0",
     "level": "^1.4.0",
     "lexicographic-integer": "^1.1.0",
