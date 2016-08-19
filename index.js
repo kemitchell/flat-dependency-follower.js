@@ -605,6 +605,22 @@ prototype.versions = function (name, callback) {
   })
 }
 
+// Get all currently known package names.
+prototype.packages = function (name) {
+  return pump(
+    this._levelup.createReadStream({
+      gt: encodeKey(UPDATE_PREFIX, ''),
+      lte: encodeKey(UPDATE_PREFIX, '~'),
+      keys: true,
+      values: false
+    }),
+    through.obj(function (key, _, done) {
+      var decoded = decodeKey(key)
+      done(null, decoded[1])
+    })
+  )
+}
+
 // Get the last-processed sequence number.
 prototype.sequence = function () {
   return this._sequence
