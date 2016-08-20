@@ -73,6 +73,9 @@ Useful request paths include:
 
 - `GET /sequence` serves the server's current sequence number.
 
+- `GET /behind` serves the difference between the sequence of the
+  replication API and the server's current sequence number.
+
 ## Special Thanks
 
 - [Chris Dickinson](https://www.npmjs.com/~chrisdickinson)

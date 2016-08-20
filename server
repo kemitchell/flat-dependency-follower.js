@@ -1,16 +1,21 @@
 #!/usr/bin/env node
 var ChangesStream = require('changes-stream')
 var Follower = require('./')
+var ecb = require('ecb')
 var fs = require('fs')
 var http = require('http')
+var https = require('https')
 var level = require('level')
+var parse = require('json-parse-errback')
 var pino = require('pino')
 var pump = require('pump')
 var through = require('through2')
 var url = require('url')
 
+var REPLICATE_API = 'https://replicate.npmjs.com'
+
 var changes = new ChangesStream({
-  db: 'https://replicate.npmjs.com',
+  db: REPLICATE_API,
   include_docs: true,
   since: process.argv[2] ? parseInt(process.argv[2]) : 1
 })
@@ -65,6 +70,21 @@ http.createServer(function (request, response) {
   var pathname = url.parse(request.url).pathname
   if (pathname === '/sequence') {
     response.end(JSON.stringify(follower.sequence()))
+  } else if (pathname === '/behind') {
+    https.get(REPLICATE_API, function (response) {
+      var buffer = []
+      response
+      .once('error', internalError)
+      .on('data', function (chunk) {
+        buffer.push(chunk)
+      })
+      .once('end', function () {
+        var body = Buffer.concat(buffer)
+        parse(body, ecb(internalError, function (body) {
+          sendJSON(body.update_seq - follower.sequence())
+        }))
+      })
+    })
   } else if (pathname === '/packages') {
     pump(
       follower.packages(),
