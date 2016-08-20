@@ -62,23 +62,26 @@ registry and serves data via HTTP.
 
 Useful request paths include:
 
-- `GET /packages` streams known package names, separated by newlines.
+-  `GET /packages` streams known package names, separated by newlines.
 
-- `GET /packages/{name}` serves a JSON array of package versions known
-   to the follower.
+-  `GET /packages/{name}` serves a JSON array of package versions known
+    to the follower.
 
-- `GET /packages/{name}/{version}{/sequence}`, where `sequence` is the
-  server's current sequence by default.  Serves a flat dependency tree,
-  if any, as JSON.
+-  `GET /packages/{name}/{version}{/sequence}`, where `sequence` is the
+   server's current sequence by default.  Serves a flat dependency
+   tree, if any, as JSON.
 
-- `GET /sequence` serves the server's current sequence number.
+-  `GET /sequence` serves the server's current sequence number.
 
-- `GET /behind` serves the difference between the sequence of the
-  replication API and the server's current sequence number.
+-  `GET /behind` serves the difference between the sequence of the
+   replication API and the server's current sequence number.
 
 ## Special Thanks
 
-- [Chris Dickinson](https://www.npmjs.com/~chrisdickinson)
-- [Mikola Lysenko](https://www.npmjs.com/~mikolalysenko)
-- [Rebecca Turner](https://www.npmjs.com/~iarna)
-- [Ashley Williams](https://www.npmjs.com/~ag_dubs)
+-  [Chris Dickinson](https://www.npmjs.com/~chrisdickinson)
+
+-  [Mikola Lysenko](https://www.npmjs.com/~mikolalysenko)
+
+-  [Rebecca Turner](https://www.npmjs.com/~iarna)
+
+-  [Ashley Williams](https://www.npmjs.com/~ag_dubs)
