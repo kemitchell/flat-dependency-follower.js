@@ -35,6 +35,8 @@ try {
 var follower = new Follower(levelup, from)
 var log = pino()
 
+log.info({from: from}, 'starting')
+
 changes
 .on('error', logError)
 .pipe(follower)
