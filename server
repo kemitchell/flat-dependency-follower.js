@@ -27,7 +27,7 @@ var SEQUENCE = process.env.SEQUENCE || 'sequence'
 var from = null
 try {
   var read = fs.readFileSync(SEQUENCE)
-  from = parseInt(read)
+  from = parseInt(read.toString())
 } catch (error) {
   from = 0
 }
