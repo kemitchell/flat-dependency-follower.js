@@ -37,9 +37,7 @@ var log = pino()
 
 log.info({from: from}, 'starting')
 
-changes
-.on('error', logError)
-.pipe(follower)
+pump(changes, follower)
 .on('error', logError)
 .on('missing', function (info) {
   log.warn(info, 'missing')
