@@ -97,6 +97,7 @@ prototype._write = function (chunk, encoding, callback) {
   normalize(chunk)
   var updatedName = chunk.name
   var updateKey = encodeKey(UPDATE_PREFIX, updatedName)
+  self.emit('updated', updatedName)
 
   var packed = packInteger(sequence)
 
@@ -144,6 +145,8 @@ prototype._write = function (chunk, encoding, callback) {
             )
           })
         })
+
+        self.emit('versions', versions)
 
         lastUpdate = null
 
@@ -280,9 +283,9 @@ prototype._write = function (chunk, encoding, callback) {
               ),
               to.obj(function (chunk, _, done) {
                 writeUpdatedTree(chunk, done)
-              })
+              }),
+              callback
             )
-            .once('finish', callback)
           })
         )
 
@@ -338,6 +341,13 @@ prototype._write = function (chunk, encoding, callback) {
               completeBatch(dependentBatch)
               self._levelup.batch(dependentBatch, function (error) {
                 dependentBatch = null
+                self.emit('updated', {
+                  dependency: {
+                    name: updatedName,
+                    version: updatedVersion
+                  },
+                  dependent: dependent
+                })
                 done(error)
               })
             })

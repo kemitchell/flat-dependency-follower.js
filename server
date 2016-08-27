@@ -42,6 +42,15 @@ pump(changes, follower)
 .on('missing', function (info) {
   log.warn(info, 'missing')
 })
+.on('updated', function (updated) {
+  log.info({updated: updated})
+})
+.on('versions', function (versions) {
+  log.info({versions: versions})
+})
+.on('updated', function (updated) {
+  log.info({updated: updated})
+})
 .on('sequence', function (sequence) {
   log.info({sequence: sequence})
   fs.writeFile(SEQUENCE, String(sequence))
