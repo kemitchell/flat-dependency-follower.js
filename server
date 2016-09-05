@@ -32,44 +32,6 @@ var log = pino()
 
 log.info({from: from}, 'starting')
 
-https.request({
-  host: REPLICATE_API,
-  path: '/_changes?' + querystring.stringify({
-    feed: 'continuous',
-    include_docs: 'true',
-    since: String(from),
-    style: 'all_docs'
-  }),
-  headers: {
-    accept: 'application/json'
-  }
-})
-.once('response', function (response) {
-  pump(response, ndjson.parse(), follower)
-  .on('error', logError)
-  .on('missing', function (info) {
-    log.warn(info, 'missing')
-  })
-  .on('updated', function (updated) {
-    log.info({updated: updated})
-  })
-  .on('versions', function (versions) {
-    log.info({versions: versions})
-  })
-  .on('updated', function (updated) {
-    log.info({updated: updated})
-  })
-  .on('sequence', function (sequence) {
-    log.info({sequence: sequence})
-    fs.writeFile(SEQUENCE, String(sequence))
-  })
-})
-.end()
-
-function logError (error) {
-  log.error(error)
-}
-
 var PACKAGE_PATH = new RegExp(
   '^' +
   '/packages' +
@@ -79,7 +41,7 @@ var PACKAGE_PATH = new RegExp(
   '$'
 )
 
-http.createServer(function (request, response) {
+var server = http.createServer(function (request, response) {
   if (request.method !== 'GET') {
     response.statusCode = 405
     response.end()
@@ -176,6 +138,50 @@ http.createServer(function (request, response) {
     response.end()
   }
 })
-.listen(process.env.PORT || 8080, function () {
+
+server.listen(process.env.PORT || 8080, function () {
   log.info({event: 'listening', port: this.address().port})
 })
+
+https.request({
+  host: REPLICATE_API,
+  path: '/_changes?' + querystring.stringify({
+    feed: 'continuous',
+    include_docs: 'true',
+    since: String(from),
+    style: 'all_docs'
+  }),
+  headers: {
+    accept: 'application/json'
+  }
+})
+.once('response', function (response) {
+  pump(response, ndjson.parse(), follower)
+  .on('error', logError)
+  .on('missing', function (info) {
+    log.warn(info, 'missing')
+  })
+  .on('updated', function (updated) {
+    log.info({updated: updated})
+  })
+  .on('versions', function (versions) {
+    log.info({versions: versions})
+  })
+  .on('updated', function (updated) {
+    log.info({updated: updated})
+  })
+  .on('sequence', function (sequence) {
+    log.info({sequence: sequence})
+    fs.writeFile(SEQUENCE, String(sequence))
+  })
+  .on('finish', function () {
+    server.close()
+  })
+})
+.end()
+
+function logError (error) {
+  log.error(error)
+  server.close()
+}
+
