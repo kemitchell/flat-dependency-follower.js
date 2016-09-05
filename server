@@ -1,18 +1,19 @@
 #!/usr/bin/env node
-var ChangesStream = require('changes-stream')
 var Follower = require('./')
 var ecb = require('ecb')
 var fs = require('fs')
 var http = require('http')
 var https = require('https')
 var level = require('level')
+var ndjson = require('ndjson')
 var parse = require('json-parse-errback')
 var pino = require('pino')
 var pump = require('pump')
+var querystring = require('querystring')
 var through = require('through2')
 var url = require('url')
 
-var REPLICATE_API = 'https://replicate.npmjs.com'
+var REPLICATE_API = 'replicate.npmjs.com'
 
 var SEQUENCE = process.env.SEQUENCE || 'sequence'
 var from = null
@@ -23,12 +24,6 @@ try {
   from = 0
 }
 
-var changes = new ChangesStream({
-  db: REPLICATE_API,
-  include_docs: true,
-  since: from
-})
-
 var LEVEL = process.env.LEVELDB || 'follower.leveldb'
 var levelup = level(LEVEL, {valueEncoding: 'json'})
 
@@ -37,24 +32,39 @@ var log = pino()
 
 log.info({from: from}, 'starting')
 
-pump(changes, follower)
-.on('error', logError)
-.on('missing', function (info) {
-  log.warn(info, 'missing')
+https.request({
+  host: REPLICATE_API,
+  path: '/_changes?' + querystring.stringify({
+    feed: 'continuous',
+    include_docs: 'true',
+    since: String(from),
+    style: 'all_docs'
+  }),
+  headers: {
+    accept: 'application/json'
+  }
 })
-.on('updated', function (updated) {
-  log.info({updated: updated})
+.once('response', function (response) {
+  pump(response, ndjson.parse(), follower)
+  .on('error', logError)
+  .on('missing', function (info) {
+    log.warn(info, 'missing')
+  })
+  .on('updated', function (updated) {
+    log.info({updated: updated})
+  })
+  .on('versions', function (versions) {
+    log.info({versions: versions})
+  })
+  .on('updated', function (updated) {
+    log.info({updated: updated})
+  })
+  .on('sequence', function (sequence) {
+    log.info({sequence: sequence})
+    fs.writeFile(SEQUENCE, String(sequence))
+  })
 })
-.on('versions', function (versions) {
-  log.info({versions: versions})
-})
-.on('updated', function (updated) {
-  log.info({updated: updated})
-})
-.on('sequence', function (sequence) {
-  log.info({sequence: sequence})
-  fs.writeFile(SEQUENCE, String(sequence))
-})
+.end()
 
 function logError (error) {
   log.error(error)
@@ -80,7 +90,7 @@ http.createServer(function (request, response) {
   if (pathname === '/sequence') {
     response.end(JSON.stringify(follower.sequence()))
   } else if (pathname === '/behind') {
-    https.get(REPLICATE_API, function (response) {
+    https.get('https://' + REPLICATE_API, function (response) {
       var buffer = []
       response
       .once('error', internalError)
