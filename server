@@ -154,6 +154,8 @@ http.createServer(function (request, response) {
     } else {
       notFound()
     }
+  } else if (pathname === '/memory') {
+    sendJSON(process.memoryUsage())
   } else {
     notFound()
   }
