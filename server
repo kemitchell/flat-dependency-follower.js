@@ -148,6 +148,7 @@ https.request({
   path: '/_changes?' + querystring.stringify({
     feed: 'continuous',
     include_docs: 'true',
+    heartbeat: 'true',
     since: String(from),
     style: 'all_docs'
   }),
