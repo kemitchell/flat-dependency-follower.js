@@ -156,7 +156,7 @@ https.request({
   }
 })
 .once('response', function (response) {
-  pump(response, ndjson.parse(), follower)
+  pump(response, ndjson.parse({strict: false}), follower)
   .on('error', logError)
   .on('missing', function (info) {
     log.warn(info, 'missing')
