@@ -176,6 +176,7 @@ https.request({
     fs.writeFile(SEQUENCE, String(sequence))
   })
   .on('finish', function () {
+    log.info('finish')
     server.close()
   })
 })
