@@ -177,13 +177,22 @@ https.request({
   })
   .on('finish', function () {
     log.info('finish')
-    server.close()
+    exit()
   })
 })
 .end()
 
 function logError (error) {
   log.error(error)
-  server.close()
+  exit()
 }
 
+function exit () {
+  server.close(function () {
+    log.info('closed server')
+    levelup.close(function () {
+      log.info('closed levelup')
+      process.exit(1)
+    })
+  })
+}
