@@ -157,6 +157,10 @@ var request = https.request({
   }
 })
 .once('response', function (response) {
+  if (response.statusCode !== 200) {
+    log.error(response, 'server responded ' + response.statusCode)
+    exit()
+  }
   pump(response, ndjson.parse({strict: false}), follower)
   .on('error', logError)
   .on('missing', function (info) {
@@ -179,6 +183,10 @@ var request = https.request({
     log.info('finish')
     exit()
   })
+})
+.once('error', function (error) {
+  log.error(error)
+  exit()
 })
 
 request.setSocketKeepAlive(true)
