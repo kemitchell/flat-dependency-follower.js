@@ -143,7 +143,7 @@ server.listen(process.env.PORT || 8080, function () {
   log.info({event: 'listening', port: this.address().port})
 })
 
-https.request({
+var request = https.request({
   host: REPLICATE_API,
   path: '/_changes?' + querystring.stringify({
     feed: 'continuous',
@@ -180,7 +180,9 @@ https.request({
     exit()
   })
 })
-.end()
+
+request.setSocketKeepAlive(true)
+request.end()
 
 function logError (error) {
   log.error(error)
