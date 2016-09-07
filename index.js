@@ -450,80 +450,85 @@ prototype._updateVersion = function (sequence, version, callback) {
             self._createDependentsStream(
               packed, updatedName, updatedVersion
             ),
-            to.obj(function (chunk, _, done) {
-              writeUpdatedTree(chunk, done)
+            to.obj(function (dependent, _, done) {
+              self._updateDependent(
+                packed, updatedName, updatedVersion, tree,
+                dependent, done
+              )
             }),
             callback
           )
         })
       )
+    })
+  )
+}
 
-      // Generate an updated tree for a dependent.
-      function writeUpdatedTree (record, done) {
-        var dependent = record.dependent
-        var name = dependent.name
-        var version = dependent.version
+prototype._updateDependent = function (
+  packed, updatedName, updatedVersion, tree, record, callback
+) {
+  var dependent = record.dependent
+  var name = dependent.name
+  var version = dependent.version
+  var self = this
 
-        // Find the most current tree for the package.
-        self.query(
-          name, version, packed,
-          ecb(done, function (result) {
-            // Create a tree with:
-            //
-            // 1. the update package
-            // 2. the updated package's dependencies
-            //
-            // and use it to update the existing tree for the
-            // dependent package.
-            var treeClone = clone(tree)
+  // Find the most current tree for the package.
+  self.query(
+    name, version, packed,
+    ecb(callback, function (result) {
+      // Create a tree with:
+      //
+      // 1. the update package
+      // 2. the updated package's dependencies
+      //
+      // and use it to update the existing tree for the
+      // dependent package.
+      var treeClone = clone(tree)
 
-            treeClone.push({
-              name: updatedName,
-              version: updatedVersion,
-              links: treeClone
-              .reduce(function (links, dependency) {
-                return dependency.range
-                ? links.concat({
-                  name: dependency.name,
-                  version: dependency.version,
-                  range: dependency.range
-                })
-                : links
-              }, [])
-            })
-
-            treeClone.forEach(function (dependency) {
-              // Demote direct dependencies to indirect dependencies.
-              delete dependency.range
-            })
-
-            updateFlatTree(
-              result,
-              updatedName,
-              updatedVersion,
-              treeClone
-            )
-            sortFlatTree(result)
-
-            var dependentBatch = []
-            pushTreeRecords(
-              dependentBatch, name, version, result, packed
-            )
-            completeBatch(dependentBatch)
-            self._levelup.batch(dependentBatch, function (error) {
-              dependentBatch = null
-              self.emit('updated', {
-                dependency: {
-                  name: updatedName,
-                  version: updatedVersion
-                },
-                dependent: dependent
-              })
-              done(error)
-            })
+      treeClone.push({
+        name: updatedName,
+        version: updatedVersion,
+        links: treeClone
+        .reduce(function (links, dependency) {
+          return dependency.range
+          ? links.concat({
+            name: dependency.name,
+            version: dependency.version,
+            range: dependency.range
           })
-        )
-      }
+          : links
+        }, [])
+      })
+
+      treeClone.forEach(function (dependency) {
+        // Demote direct dependencies to indirect dependencies.
+        delete dependency.range
+      })
+
+      updateFlatTree(
+        result,
+        updatedName,
+        updatedVersion,
+        treeClone
+      )
+      sortFlatTree(result)
+
+      var dependentBatch = []
+      pushTreeRecords(
+        dependentBatch, name, version, result, packed
+      )
+      completeBatch(dependentBatch)
+      self._levelup.batch(dependentBatch, function (error) {
+        dependentBatch = null
+        self.emit('updated', {
+          dependency: {
+            name: updatedName,
+            version: updatedVersion
+          },
+          dependent: dependent
+        })
+        callback(error)
+      })
     })
   )
 }
