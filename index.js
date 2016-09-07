@@ -9,6 +9,7 @@ var mergeFlatTrees = require('merge-flat-package-trees')
 var normalize = require('normalize-registry-metadata')
 var pump = require('pump')
 var runSeries = require('run-series')
+var runWaterfall = require('run-waterfall')
 var semver = require('semver')
 var sortFlatTree = require('sort-flat-package-tree')
 var through = require('through2')
@@ -107,16 +108,14 @@ prototype._write = function (chunk, encoding, callback) {
     callback()
   }
 
-  var lastUpdate = null
-
-  runSeries(
+  runWaterfall(
     [
       // Read the last saved update, which we will compare with the
       // current update to identify changed versions.
       getLastUpdate,
 
       // Identify changed versions and process them.
-      function (done) {
+      function (lastUpdate, done) {
         // Turn the {$version: $object} map into an array.
         var versions = Object.keys(chunk.versions)
         .map(function propertyToArrayElement (updatedVersion) {
@@ -156,14 +155,12 @@ prototype._write = function (chunk, encoding, callback) {
       if (error) {
         /* istanbul ignore else */
         if (error.notFound) {
-          lastUpdate = []
-          callback()
+          callback(null, [])
         } else {
           callback(error)
         }
       } else {
-        lastUpdate = result
-        callback()
+        callback(null, result)
       }
     })
   }
