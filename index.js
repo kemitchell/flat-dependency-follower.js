@@ -98,8 +98,6 @@ prototype._write = function (chunk, encoding, callback) {
   var updatedName = chunk.name
   self.emit('updated', updatedName)
 
-  var packed = packInteger(sequence)
-
   function finish () {
     self._sequence = sequence
     self.emit('sequence', sequence)
@@ -118,7 +116,9 @@ prototype._write = function (chunk, encoding, callback) {
       function (lastUpdate, done) {
         var versions = changedVersions(lastUpdate, chunk)
         self.emit('versions', versions)
-        asyncEach(versions, writeVersion, done)
+        asyncEach(versions, function (version, done) {
+          self._updateVersion(sequence, version, done)
+        }, done)
       },
 
       // Overwrite the update record for this package, so we can compare
@@ -129,178 +129,6 @@ prototype._write = function (chunk, encoding, callback) {
     ],
     ecb(callback, finish)
   )
-
-  function writeVersion (argument, callback) {
-    var updatedVersion = argument.updatedVersion
-    var ranges = argument.ranges
-
-    // Compute the flat package dependency manifest for the new package.
-    self._treeFor(
-      packed, updatedName, updatedVersion, ranges,
-      ecb(callback, function (tree) {
-        var missingDependencies = tree.filter(function (dependency) {
-          return dependency.hasOwnProperty('missing')
-        })
-        var hasMissingDependencies = missingDependencies.length !== 0
-
-        // We are missing some dependencies for this package.
-        if (hasMissingDependencies) {
-          missingDependencies.forEach(function (dependency) {
-            self.emit('missing', {
-              message: (
-                'no package satisfying ' +
-                dependency.name + '@' + dependency.range + ' for ' +
-                updatedName + '@' + updatedVersion
-              ),
-              sequence: sequence,
-              dependent: {
-                name: updatedName,
-                version: updatedVersion
-              },
-              dependency: {
-                name: dependency.name,
-                range: dependency.range
-              }
-            })
-          })
-        }
-
-        var updatedBatch = []
-
-        // Store the tree.
-        pushTreeRecords(
-          updatedBatch, updatedName, updatedVersion, tree, packed
-        )
-
-        // Store key-only index records.  These will be used to
-        // determine that this package's tree needs to be updated when
-        // new versions of any of its dependencies---direct or
-        // indirect---come in later.
-        tree.forEach(function (dependency) {
-          var dependencyName = dependency.name
-          var withRanges = []
-
-          // Direct dependency range.
-          if (dependencyName in ranges) {
-            withRanges.push(ranges[dependencyName])
-          }
-
-          // Indirect dependency ranges.
-          tree.forEach(function (otherDependency) {
-            otherDependency.links.forEach(function (link) {
-              if (link.name === dependencyName) {
-                var range = link.range
-                /* istanbul ignore else */
-                if (withRanges.indexOf(range) === -1) {
-                  withRanges.push(range)
-                }
-              }
-            })
-          })
-
-          withRanges.forEach(function (range) {
-            updatedBatch.push({
-              key: encodeKey(
-                DEPENDENCY_PREFIX,
-                dependencyName,
-                packed,
-                range,
-                updatedName,
-                updatedVersion
-              )
-            })
-          })
-        })
-
-        completeBatch(updatedBatch)
-
-        self._levelup.batch(
-          updatedBatch,
-          ecb(callback, function () {
-            updatedBatch = null
-            // Update trees for packages that directly and indirectly
-            // depend on the updated package.
-            pump(
-              self._createDependentsStream(
-                packed, updatedName, updatedVersion
-              ),
-              to.obj(function (chunk, _, done) {
-                writeUpdatedTree(chunk, done)
-              }),
-              callback
-            )
-          })
-        )
-
-        // Generate an updated tree for a dependent.
-        function writeUpdatedTree (record, done) {
-          var dependent = record.dependent
-          var name = dependent.name
-          var version = dependent.version
-
-          // Find the most current tree for the package.
-          self.query(
-            name, version, packed,
-            ecb(done, function (result) {
-              // Create a tree with:
-              //
-              // 1. the update package
-              // 2. the updated package's dependencies
-              //
-              // and use it to update the existing tree for the
-              // dependent package.
-              var treeClone = clone(tree)
-
-              treeClone.push({
-                name: updatedName,
-                version: updatedVersion,
-                links: treeClone
-                .reduce(function (links, dependency) {
-                  return dependency.range
-                  ? links.concat({
-                    name: dependency.name,
-                    version: dependency.version,
-                    range: dependency.range
-                  })
-                  : links
-                }, [])
-              })
-
-              treeClone.forEach(function (dependency) {
-                // Demote direct dependencies to indirect dependencies.
-                delete dependency.range
-              })
-
-              updateFlatTree(
-                result,
-                updatedName,
-                updatedVersion,
-                treeClone
-              )
-              sortFlatTree(result)
-
-              var dependentBatch = []
-              pushTreeRecords(
-                dependentBatch, name, version, result, packed
-              )
-              completeBatch(dependentBatch)
-              self._levelup.batch(dependentBatch, function (error) {
-                dependentBatch = null
-                self.emit('updated', {
-                  dependency: {
-                    name: updatedName,
-                    version: updatedVersion
-                  },
-                  dependent: dependent
-                })
-                done(error)
-              })
-            })
-          )
-        }
-      })
-    )
-  }
 }
 
 // Generate a tree for a package, based on the `.dependencies` object in
@@ -525,6 +353,181 @@ prototype._putUpdate = function (chunk, callback) {
   this._levelup.put(updateKey, value, callback)
 }
 
+prototype._updateVersion = function (sequence, version, callback) {
+  var updatedName = version.updatedName
+  var updatedVersion = version.updatedVersion
+  var ranges = version.ranges
+  var self = this
+  var packed = packInteger(sequence)
+
+  // Compute the flat package dependency manifest for the new package.
+  self._treeFor(
+    packed, updatedName, updatedVersion, ranges,
+    ecb(callback, function (tree) {
+      var missingDependencies = tree.filter(function (dependency) {
+        return dependency.hasOwnProperty('missing')
+      })
+      var hasMissingDependencies = missingDependencies.length !== 0
+
+      // We are missing some dependencies for this package.
+      if (hasMissingDependencies) {
+        missingDependencies.forEach(function (dependency) {
+          self.emit('missing', {
+            message: (
+              'no package satisfying ' +
+              dependency.name + '@' + dependency.range + ' for ' +
+              updatedName + '@' + updatedVersion
+            ),
+            sequence: sequence,
+            dependent: {
+              name: updatedName,
+              version: updatedVersion
+            },
+            dependency: {
+              name: dependency.name,
+              range: dependency.range
+            }
+          })
+        })
+      }
+
+      var updatedBatch = []
+
+      // Store the tree.
+      pushTreeRecords(
+        updatedBatch, updatedName, updatedVersion, tree, packed
+      )
+
+      // Store key-only index records.  These will be used to
+      // determine that this package's tree needs to be updated when
+      // new versions of any of its dependencies---direct or
+      // indirect---come in later.
+      tree.forEach(function (dependency) {
+        var dependencyName = dependency.name
+        var withRanges = []
+
+        // Direct dependency range.
+        if (dependencyName in ranges) {
+          withRanges.push(ranges[dependencyName])
+        }
+
+        // Indirect dependency ranges.
+        tree.forEach(function (otherDependency) {
+          otherDependency.links.forEach(function (link) {
+            if (link.name === dependencyName) {
+              var range = link.range
+              /* istanbul ignore else */
+              if (withRanges.indexOf(range) === -1) {
+                withRanges.push(range)
+              }
+            }
+          })
+        })
+
+        withRanges.forEach(function (range) {
+          updatedBatch.push({
+            key: encodeKey(
+              DEPENDENCY_PREFIX,
+              dependencyName,
+              packed,
+              range,
+              updatedName,
+              updatedVersion
+            )
+          })
+        })
+      })
+
+      completeBatch(updatedBatch)
+
+      self._levelup.batch(
+        updatedBatch,
+        ecb(callback, function () {
+          updatedBatch = null
+          // Update trees for packages that directly and indirectly
+          // depend on the updated package.
+          pump(
+            self._createDependentsStream(
+              packed, updatedName, updatedVersion
+            ),
+            to.obj(function (chunk, _, done) {
+              writeUpdatedTree(chunk, done)
+            }),
+            callback
+          )
+        })
+      )
+
+      // Generate an updated tree for a dependent.
+      function writeUpdatedTree (record, done) {
+        var dependent = record.dependent
+        var name = dependent.name
+        var version = dependent.version
+
+        // Find the most current tree for the package.
+        self.query(
+          name, version, packed,
+          ecb(done, function (result) {
+            // Create a tree with:
+            //
+            // 1. the update package
+            // 2. the updated package's dependencies
+            //
+            // and use it to update the existing tree for the
+            // dependent package.
+            var treeClone = clone(tree)
+
+            treeClone.push({
+              name: updatedName,
+              version: updatedVersion,
+              links: treeClone
+              .reduce(function (links, dependency) {
+                return dependency.range
+                ? links.concat({
+                  name: dependency.name,
+                  version: dependency.version,
+                  range: dependency.range
+                })
+                : links
+              }, [])
+            })
+
+            treeClone.forEach(function (dependency) {
+              // Demote direct dependencies to indirect dependencies.
+              delete dependency.range
+            })
+
+            updateFlatTree(
+              result,
+              updatedName,
+              updatedVersion,
+              treeClone
+            )
+            sortFlatTree(result)
+
+            var dependentBatch = []
+            pushTreeRecords(
+              dependentBatch, name, version, result, packed
+            )
+            completeBatch(dependentBatch)
+            self._levelup.batch(dependentBatch, function (error) {
+              dependentBatch = null
+              self.emit('updated', {
+                dependency: {
+                  name: updatedName,
+                  version: updatedVersion
+                },
+                dependent: dependent
+              })
+              done(error)
+            })
+          })
+        )
+      }
+    })
+  )
+}
+
 // Public API
 
 // Get the flat dependency graph for a package and version at a specific
@@ -667,7 +670,8 @@ function changedVersions (oldUpdate, newUpdate) {
   .map(function propertyToArrayElement (updatedVersion) {
     return {
       updatedVersion: updatedVersion,
-      ranges: newUpdate.versions[updatedVersion].dependencies || {}
+      ranges: newUpdate.versions[updatedVersion].dependencies || {},
+      updatedName: newUpdate.name
     }
   })
   // Filter out versions that haven't changed since the last
