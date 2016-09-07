@@ -5,11 +5,11 @@ var fs = require('fs')
 var http = require('http')
 var https = require('https')
 var level = require('level')
-var ndjson = require('ndjson')
 var parse = require('json-parse-errback')
 var pino = require('pino')
 var pump = require('pump')
 var querystring = require('querystring')
+var split2 = require('split2')
 var through = require('through2')
 var url = require('url')
 
@@ -161,7 +161,24 @@ var request = https.request({
     log.error(response, 'server responded ' + response.statusCode)
     exit()
   }
-  pump(response, ndjson.parse({strict: false}), follower)
+  pump(
+    response,
+    split2(
+      function (line) {
+        try {
+          if (line) {
+            return JSON.parse(line)
+          }
+        } catch (e) {
+          return
+        }
+      },
+      {
+        highWaterMark: 2
+      }
+    ),
+    follower
+  )
   .on('error', logError)
   .on('missing', function (info) {
     log.warn(info, 'missing')

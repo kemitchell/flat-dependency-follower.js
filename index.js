@@ -76,7 +76,10 @@ function FlatDependencyFollower (levelup) {
   }
   this._levelup = levelup
   this._sequence = 0
-  Writable.call(this, {objectMode: true})
+  Writable.call(this, {
+    objectMode: true,
+    highWaterMark: 2
+  })
 }
 
 inherits(FlatDependencyFollower, Writable)
