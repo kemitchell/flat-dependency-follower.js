@@ -115,6 +115,7 @@ prototype._write = function (chunk, encoding, callback) {
       // Identify changed versions and process them.
       function (lastUpdate, done) {
         var versions = changedVersions(lastUpdate, chunk)
+        lastUpdate = null
         self.emit('versions', versions)
         asyncEach(versions, function (version, done) {
           self._updateVersion(sequence, version, done)
