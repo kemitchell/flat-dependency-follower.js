@@ -96,7 +96,6 @@ prototype._write = function (chunk, encoding, callback) {
 
   normalize(chunk)
   var updatedName = chunk.name
-  var updateKey = encodeKey(UPDATE_PREFIX, updatedName)
   self.emit('updated', updatedName)
 
   var packed = packInteger(sequence)
@@ -124,21 +123,12 @@ prototype._write = function (chunk, encoding, callback) {
 
       // Overwrite the update record for this package, so we can compare
       // it to the next update for this package later.
-      putUpdate
+      function (done) {
+        self._putUpdate(chunk, done)
+      }
     ],
     ecb(callback, finish)
   )
-
-  function putUpdate (callback) {
-    var value = Object.keys(chunk.versions)
-    .map(function (version) {
-      return {
-        updatedVersion: version,
-        ranges: chunk.versions[version].dependencies
-      }
-    }, [])
-    self._levelup.put(updateKey, value, callback)
-  }
 
   function writeVersion (argument, callback) {
     var updatedVersion = argument.updatedVersion
@@ -521,6 +511,18 @@ prototype._getLastUpdate = function (name, callback) {
       callback(null, result)
     }
   })
+}
+
+prototype._putUpdate = function (chunk, callback) {
+  var value = Object.keys(chunk.versions)
+  .map(function (version) {
+    return {
+      updatedVersion: version,
+      ranges: chunk.versions[version].dependencies
+    }
+  }, [])
+  var updateKey = encodeKey(UPDATE_PREFIX, chunk.name)
+  this._levelup.put(updateKey, value, callback)
 }
 
 // Public API
