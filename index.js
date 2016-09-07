@@ -98,6 +98,13 @@ prototype._write = function (chunk, encoding, callback) {
   var updatedName = chunk.name
   self.emit('updated', updatedName)
 
+  // Delete properties we don't need in memory.
+  prune(chunk, ['name', 'versions'])
+  var versions = chunk.versions
+  Object.keys(versions).forEach(function (key) {
+    prune(versions[key], ['dependencies'])
+  })
+
   function finish () {
     self._sequence = sequence
     self.emit('sequence', sequence)
@@ -690,4 +697,16 @@ function changedVersions (oldUpdate, newUpdate) {
       )
     })
   })
+}
+
+function prune (object, keysToKeep) {
+  var keys = Object.keys(object)
+  var length = keys.length
+  for (var index = 0; index < length; index++) {
+    var key = keys[index]
+    /* istanbul ignore if */
+    if (keysToKeep.indexOf(key) === -1) {
+      delete object[key]
+    }
+  }
 }
