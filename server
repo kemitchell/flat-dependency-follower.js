@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+var ChangesStream = require('changes-stream')
 var Follower = require('./')
 var ecb = require('ecb')
 var fs = require('fs')
@@ -8,8 +9,6 @@ var level = require('level')
 var parse = require('json-parse-errback')
 var pino = require('pino')
 var pump = require('pump')
-var querystring = require('querystring')
-var split2 = require('split2')
 var through = require('through2')
 var url = require('url')
 
@@ -143,71 +142,39 @@ server.listen(process.env.PORT || 8080, function () {
   log.info({event: 'listening', port: this.address().port})
 })
 
-var request = https.request({
-  host: REPLICATE_API,
-  path: '/_changes?' + querystring.stringify({
+pump(
+  new ChangesStream({
+    db: 'https://' + REPLICATE_API,
     feed: 'continuous',
     include_docs: 'true',
     heartbeat: 'true',
     since: String(from),
-    style: 'all_docs'
+    style: 'all_docs',
+    highWaterMark: 2
   }),
-  headers: {
-    accept: 'application/json'
-  }
+  follower
+)
+.on('error', logError)
+.on('missing', function (info) {
+  log.warn(info, 'missing')
 })
-.once('response', function (response) {
-  if (response.statusCode !== 200) {
-    log.error(response, 'server responded ' + response.statusCode)
-    exit()
-  }
-  pump(
-    response,
-    split2(
-      function (line) {
-        try {
-          if (line) {
-            return JSON.parse(line)
-          }
-        } catch (e) {
-          return
-        }
-      },
-      {
-        highWaterMark: 2
-      }
-    ),
-    follower
-  )
-  .on('error', logError)
-  .on('missing', function (info) {
-    log.warn(info, 'missing')
-  })
-  .on('updated', function (updated) {
-    log.info({updated: updated})
-  })
-  .on('versions', function (versions) {
-    log.info({versions: versions})
-  })
-  .on('updated', function (updated) {
-    log.info({updated: updated})
-  })
-  .on('sequence', function (sequence) {
-    log.info({sequence: sequence})
-    fs.writeFile(SEQUENCE, String(sequence))
-  })
-  .on('finish', function () {
-    log.info('finish')
-    exit()
-  })
+.on('updated', function (updated) {
+  log.info({updated: updated})
 })
-.once('error', function (error) {
-  log.error(error)
+.on('versions', function (versions) {
+  log.info({versions: versions})
+})
+.on('updated', function (updated) {
+  log.info({updated: updated})
+})
+.on('sequence', function (sequence) {
+  log.info({sequence: sequence})
+  fs.writeFile(SEQUENCE, String(sequence))
+})
+.on('finish', function () {
+  log.info('finish')
   exit()
 })
-
-request.setSocketKeepAlive(true)
-request.end()
 
 function logError (error) {
   log.error(error)
