@@ -8,7 +8,6 @@ var lexint = require('lexicographic-integer')
 var mergeFlatTrees = require('merge-flat-package-trees')
 var normalize = require('normalize-registry-metadata')
 var pump = require('pump')
-var runSeries = require('run-series')
 var runWaterfall = require('run-waterfall')
 var semver = require('semver')
 var sortFlatTree = require('sort-flat-package-tree')
@@ -112,7 +111,9 @@ prototype._write = function (chunk, encoding, callback) {
     [
       // Read the last saved update, which we will compare with the
       // current update to identify changed versions.
-      getLastUpdate,
+      function (done) {
+        self._getLastUpdate(updatedName, done)
+      },
 
       // Identify changed versions and process them.
       function (lastUpdate, done) {
@@ -149,21 +150,6 @@ prototype._write = function (chunk, encoding, callback) {
     ],
     ecb(callback, finish)
   )
-
-  function getLastUpdate (callback) {
-    self._levelup.get(updateKey, function (error, result) {
-      if (error) {
-        /* istanbul ignore else */
-        if (error.notFound) {
-          callback(null, [])
-        } else {
-          callback(error)
-        }
-      } else {
-        callback(null, result)
-      }
-    })
-  }
 
   function putUpdate (callback) {
     var value = Object.keys(chunk.versions)
@@ -541,6 +527,22 @@ prototype._createDependentsStream = function (sequence, name, version) {
       }
     })
   )
+}
+
+prototype._getLastUpdate = function (name, callback) {
+  var updateKey = encodeKey(UPDATE_PREFIX, name)
+  this._levelup.get(updateKey, function (error, result) {
+    if (error) {
+      /* istanbul ignore else */
+      if (error.notFound) {
+        callback(null, [])
+      } else {
+        callback(error)
+      }
+    } else {
+      callback(null, result)
+    }
+  })
 }
 
 // Public API
