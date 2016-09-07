@@ -513,13 +513,13 @@ prototype._updateDependent = function (
       )
       sortFlatTree(result)
 
-      var dependentBatch = []
+      var batch = []
       pushTreeRecords(
-        dependentBatch, name, version, result, packed
+        batch, name, version, result, packed
       )
-      completeBatch(dependentBatch)
-      self._levelup.batch(dependentBatch, function (error) {
-        dependentBatch = null
+      completeBatch(batch)
+      self._levelup.batch(batch, ecb(callback, function () {
+        batch = null
         self.emit('updated', {
           dependency: {
             name: updatedName,
@@ -527,8 +527,8 @@ prototype._updateDependent = function (
           },
           dependent: dependent
         })
-        callback(error)
-      })
+        callback()
+      }))
     })
   )
 }
