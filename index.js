@@ -107,16 +107,6 @@ prototype._write = function (chunk, encoding, callback) {
     callback()
   }
 
-  function pushTreeRecords (batch, name, version, tree) {
-    batch.push({
-      key: encodeKey(TREE_PREFIX, name, packed, version),
-      value: tree
-    })
-    batch.push({
-      key: encodeKey(POINTER_PREFIX, name, version, packed)
-    })
-  }
-
   var lastUpdate = null
 
   runSeries(
@@ -227,7 +217,9 @@ prototype._write = function (chunk, encoding, callback) {
         var updatedBatch = []
 
         // Store the tree.
-        pushTreeRecords(updatedBatch, updatedName, updatedVersion, tree)
+        pushTreeRecords(
+          updatedBatch, updatedName, updatedVersion, tree, packed
+        )
 
         // Store key-only index records.  These will be used to
         // determine that this package's tree needs to be updated when
@@ -337,7 +329,9 @@ prototype._write = function (chunk, encoding, callback) {
               sortFlatTree(result)
 
               var dependentBatch = []
-              pushTreeRecords(dependentBatch, name, version, result)
+              pushTreeRecords(
+                dependentBatch, name, version, result, packed
+              )
               completeBatch(dependentBatch)
               self._levelup.batch(dependentBatch, function (error) {
                 dependentBatch = null
@@ -677,3 +671,14 @@ function completeBatch (batch) {
     }
   })
 }
+
+function pushTreeRecords (batch, name, version, tree, packed) {
+  batch.push({
+    key: encodeKey(TREE_PREFIX, name, packed, version),
+    value: tree
+  })
+  batch.push({
+    key: encodeKey(POINTER_PREFIX, name, version, packed)
+  })
+}
+
