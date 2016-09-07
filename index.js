@@ -117,30 +117,8 @@ prototype._write = function (chunk, encoding, callback) {
 
       // Identify changed versions and process them.
       function (lastUpdate, done) {
-        // Turn the {$version: $object} map into an array.
-        var versions = Object.keys(chunk.versions)
-        .map(function propertyToArrayElement (updatedVersion) {
-          return {
-            updatedVersion: updatedVersion,
-            ranges: chunk.versions[updatedVersion].dependencies || {}
-          }
-        })
-        // Filter out versions that haven't changed since the last
-        // update for this package.
-        .filter(function sameAsLastUpdate (newUpdate) {
-          return !lastUpdate.some(function (priorUpdate) {
-            return (
-              priorUpdate.updatedVersion === newUpdate.updatedVersion &&
-              deepEqual(priorUpdate.ranges, newUpdate.ranges)
-            )
-          })
-        })
-
+        var versions = changedVersions(lastUpdate, chunk)
         self.emit('versions', versions)
-
-        lastUpdate = null
-
-        // Process changed versions.
         asyncEach(versions, writeVersion, done)
       },
 
@@ -681,3 +659,23 @@ function pushTreeRecords (batch, name, version, tree, packed) {
   })
 }
 
+function changedVersions (oldUpdate, newUpdate) {
+  // Turn the {$version: $object} map into an array.
+  return Object.keys(newUpdate.versions)
+  .map(function propertyToArrayElement (updatedVersion) {
+    return {
+      updatedVersion: updatedVersion,
+      ranges: newUpdate.versions[updatedVersion].dependencies || {}
+    }
+  })
+  // Filter out versions that haven't changed since the last
+  // update for this package.
+  .filter(function sameAsLastUpdate (newUpdate) {
+    return !oldUpdate.some(function (priorUpdate) {
+      return (
+        priorUpdate.updatedVersion === newUpdate.updatedVersion &&
+        deepEqual(priorUpdate.ranges, newUpdate.ranges)
+      )
+    })
+  })
+}
