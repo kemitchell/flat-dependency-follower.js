@@ -531,7 +531,7 @@ prototype._updateDependent = function (
       completeBatch(batch)
       self._levelup.batch(batch, ecb(callback, function () {
         batch = null
-        self.emit('updated', {
+        self.emit('updated dependency', {
           dependency: {
             name: updatedName,
             version: updatedVersion

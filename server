@@ -27,7 +27,9 @@ var LEVEL = process.env.LEVELDB || 'follower.leveldb'
 var levelup = level(LEVEL, {valueEncoding: 'json'})
 
 var follower = new Follower(levelup)
-var log = pino()
+var log = pino({
+  level: 'info' || process.env.LOG_LEVEL.toLowerCase()
+})
 
 log.info({from: from}, 'starting')
 
@@ -162,10 +164,10 @@ pump(
   log.info({updated: updated})
 })
 .on('versions', function (versions) {
-  log.info({versions: versions})
+  log.debug({versions: versions})
 })
-.on('updated', function (updated) {
-  log.info({updated: updated})
+.on('updated dependency', function (updated) {
+  log.debug({updated: updated})
 })
 .on('sequence', function (sequence) {
   log.info({sequence: sequence})
