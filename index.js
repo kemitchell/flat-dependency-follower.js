@@ -99,7 +99,7 @@ prototype._write = function (chunk, encoding, callback) {
 
   normalize(chunk)
   var updatedName = chunk.name
-  self.emit('updated', updatedName)
+  self.emit('updating', updatedName)
 
   // Delete properties we don't need in memory.
   prune(chunk, ['name', 'versions'])
@@ -531,7 +531,7 @@ prototype._updateDependent = function (
       completeBatch(batch)
       self._levelup.batch(batch, ecb(callback, function () {
         batch = null
-        self.emit('updated dependency', {
+        self.emit('updated', {
           dependency: {
             name: updatedName,
             version: updatedVersion

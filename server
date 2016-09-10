@@ -160,14 +160,17 @@ pump(
 .on('missing', function (info) {
   log.warn(info, 'missing')
 })
-.on('updated', function (updated) {
-  log.info({updated: updated})
+.on('updating', function (name) {
+  log.info({name: name}, 'updating')
 })
 .on('versions', function (versions) {
   log.debug({versions: versions})
 })
-.on('updated dependency', function (updated) {
-  log.debug({updated: updated})
+.on('updated', function (update) {
+  log.debug({
+    dependent: update.dependent,
+    dependency: update.dependency
+  }, 'updated')
 })
 .on('sequence', function (sequence) {
   log.info({sequence: sequence})
