@@ -29,7 +29,7 @@
     "istanbul": "^0.4.4",
     "memdb": "^1.3.1",
     "run-parallel": "^1.1.6",
-    "standard": "^7.1.2",
+    "standard": "^8.4.0",
     "tape": "^4.6.0"
   },
   "files": [
