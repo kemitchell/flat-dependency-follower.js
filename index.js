@@ -8,6 +8,7 @@ var from2 = require('from2')
 var fs = require('fs')
 var inherits = require('util').inherits
 var lexint = require('lexicographic-integer')
+var lnf = require('lnf')
 var mergeFlatTrees = require('merge-flat-package-trees')
 var mkdirp = require('mkdirp')
 var normalize = require('normalize-registry-metadata')
@@ -550,7 +551,7 @@ prototype._batch = function (batch, callback) {
     mkdirp(directory, ecb(done, function () {
       if (instruction.link) {
         var target = self._path(instruction.link)
-        fs.symlink(target, file, done)
+        lnf(target, file, done)
       } else {
         fs.writeFile(file, JSON.stringify(instruction.value), done)
       }
