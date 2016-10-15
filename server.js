@@ -170,10 +170,6 @@ pump(
       dependency: update.dependency
     }, 'updated')
   })
-  .on('sequence', function (sequence) {
-    log.info({sequence: sequence})
-    fs.writeFile(SEQUENCE, String(sequence))
-  })
   .on('finish', function () {
     log.info('finish')
     exit()
