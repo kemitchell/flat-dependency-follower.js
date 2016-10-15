@@ -153,30 +153,30 @@ pump(
   }),
   follower
 )
-.on('error', logError)
-.on('missing', function (info) {
-  log.warn(info, 'missing')
-})
-.on('updating', function (name) {
-  log.info({name: name}, 'updating')
-})
-.on('versions', function (versions) {
-  log.debug({versions: versions})
-})
-.on('updated', function (update) {
-  log.debug({
-    dependent: update.dependent,
-    dependency: update.dependency
-  }, 'updated')
-})
-.on('sequence', function (sequence) {
-  log.info({sequence: sequence})
-  fs.writeFile(SEQUENCE, String(sequence))
-})
-.on('finish', function () {
-  log.info('finish')
-  exit()
-})
+  .on('error', logError)
+  .on('missing', function (info) {
+    log.warn(info, 'missing')
+  })
+  .on('updating', function (name) {
+    log.info({name: name}, 'updating')
+  })
+  .on('versions', function (versions) {
+    log.debug({versions: versions})
+  })
+  .on('updated', function (update) {
+    log.debug({
+      dependent: update.dependent,
+      dependency: update.dependency
+    }, 'updated')
+  })
+  .on('sequence', function (sequence) {
+    log.info({sequence: sequence})
+    fs.writeFile(SEQUENCE, String(sequence))
+  })
+  .on('finish', function () {
+    log.info('finish')
+    exit()
+  })
 
 function logError (error) {
   log.error(error)
