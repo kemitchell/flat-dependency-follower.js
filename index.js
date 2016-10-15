@@ -305,6 +305,7 @@ prototype._createTreeStream = function (sequence, name) {
               return record.sequence <= sequence
             })
             .sort(function (a, b) {
+              /* istanbul ignore else */
               if (a.version < b.version) {
                 return -1
               } else if (a.version > b.version) {
@@ -351,6 +352,7 @@ prototype._createDependentsStream = function (sequence, name, version) {
     if (dependents === null) {
       recursiveReaddir(directory, function (error, read) {
         if (error) {
+          /* istanbul ignore else */
           if (error.code === 'ENOENT') {
             next(null, null)
           } else {
@@ -398,6 +400,7 @@ prototype._getLastUpdate = function (name, callback) {
   var path = this._path(UPDATE_PREFIX, name)
   fs.readFile(path, function (error, buffer) {
     if (error) {
+      /* istanbul ignore else */
       if (error.code === 'ENOENT') {
         callback(null, [])
       } else {
@@ -633,8 +636,13 @@ prototype.query = function (name, version, sequence, callback) {
   }
   var directory = self._path(LINK_PREFIX, name, version)
   fs.readdir(directory, function (error, read) {
+    /* istanbul ignore if */
     if (error) {
-      callback(null, null, null)
+      if (error.code === 'ENOENT') {
+        callback(null, null, null)
+      } else {
+        callback(error)
+      }
     } else {
       var links = read.sort().reverse()
       var length = links.length
@@ -645,6 +653,7 @@ prototype.query = function (name, version, sequence, callback) {
         } else {
           var linkPath = path.join(directory, link)
           return fs.readlink(linkPath, function (error, file) {
+            /* istanbul ignore if */
             if (error) {
               if (error.code === 'ENOENT') {
                 callback(null, null, null)
@@ -671,6 +680,7 @@ prototype.versions = function (name, callback) {
   var path = this._path(UPDATE_PREFIX, name)
   fs.readFile(path, function (error, buffer) {
     if (error) {
+      /* istanbul ignore else */
       if (error.code === 'ENOENT') {
         callback(null, null)
       } else {
