@@ -642,18 +642,23 @@ prototype.versions = function (name, callback) {
 
 // Get all currently known package names.
 prototype.packages = function (name) {
-  return pump(
-    this._levelup.createReadStream({
-      gt: encodeKey(UPDATE_PREFIX, ''),
-      lte: encodeKey(UPDATE_PREFIX, '~'),
-      keys: true,
-      values: false
-    }),
-    through.obj(function (key, _, done) {
-      var decoded = decodeKey(key)
-      done(null, decoded[1])
-    })
-  )
+  var files = null
+  var directory = this._path(UPDATE_PREFIX)
+  return from2.obj(function source (_, next) {
+    if (files === null) {
+      fs.readdir(directory, ecb(next, function (read) {
+        files = read
+        source(_, next)
+      }))
+    } else {
+      var file = files.shift()
+      if (file) {
+        next(null, path.parse(file).name)
+      } else {
+        next(null, null)
+      }
+    }
+  })
 }
 
 // Get the last-processed sequence number.
