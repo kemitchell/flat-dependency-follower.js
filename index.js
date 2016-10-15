@@ -159,9 +159,9 @@ prototype._treeFor = function (
     Object.keys(ranges).map(function (dependencyName) {
       return {
         name: dependencyName,
-        range: typeof ranges[dependencyName] === 'string'
+        range: (typeof ranges[dependencyName] === 'string')
           ? ranges[dependencyName]
-          : 'Invalid Range'
+          : null
       }
     }),
 
@@ -504,16 +504,18 @@ prototype._updateVersion = function (sequence, version, callback) {
         })
 
         withRanges.forEach(function (range) {
-          updatedBatch.push({
-            path: path.join(
-              DEPENDENCY_PREFIX,
-              dependencyName,
-              packed,
-              range,
-              updatedName,
-              updatedVersion
-            )
-          })
+          if (typeof range === 'string') {
+            updatedBatch.push({
+              path: path.join(
+                DEPENDENCY_PREFIX,
+                dependencyName,
+                packed,
+                range,
+                updatedName,
+                updatedVersion
+              )
+            })
+          }
         })
       })
 
