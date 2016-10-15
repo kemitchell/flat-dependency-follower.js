@@ -1,12 +1,17 @@
 var Writable = require('stream').Writable
 var asyncEach = require('async.each')
+var recursiveReaddir = require('recursive-readdir')
 var asyncMap = require('async.map')
 var deepEqual = require('deep-equal')
 var ecb = require('ecb')
+var from2 = require('from2')
+var fs = require('fs')
 var inherits = require('util').inherits
 var lexint = require('lexicographic-integer')
 var mergeFlatTrees = require('merge-flat-package-trees')
 var normalize = require('normalize-registry-metadata')
+var parse = require('json-parse-errback')
+var path = require('path')
 var pump = require('pump')
 var runWaterfall = require('run-waterfall')
 var semver = require('semver')
@@ -70,11 +75,11 @@ var TREE_PREFIX = 'tree'
 var POINTER_PREFIX = 'pointer'
 var DEPENDENCY_PREFIX = 'dependency'
 
-function FlatDependencyFollower (levelup) {
+function FlatDependencyFollower (directory) {
   if (!(this instanceof FlatDependencyFollower)) {
-    return new FlatDependencyFollower(levelup)
+    return new FlatDependencyFollower(directory)
   }
-  this._levelup = levelup
+  this._directory = directory
   this._sequence = 0
   Writable.call(this, {
     objectMode: true,
@@ -281,21 +286,58 @@ prototype._maxSatisfying = function (sequence, name, range, callback) {
 
 // Find all stored trees for a package at or before a given sequence.
 prototype._createTreeStream = function (sequence, name) {
-  return pump(
-    this._levelup.createReadStream({
-      gt: encodeKey(TREE_PREFIX, name, ZERO, ''),
-      lt: encodeKey(TREE_PREFIX, name, sequence, '~'),
-      reverse: true
-    }),
-    through.obj(function (data, _, done) {
-      var decoded = decodeKey(data.key)
-      done(null, {
-        version: decoded[3],
-        sequence: unpackInteger(decoded[2]),
-        tree: data.value
+  var self = this
+  var directory = self._path('trees', name)
+  var files = null
+  return from2.obj(function source (size, next) {
+    if (files === null) {
+      recursiveReaddir(directory, function (error, read) {
+        if (error) {
+          next(null, null)
+        } else {
+          files = read
+            .map(function (file) {
+              var split = file.split('/')
+              return {
+                file: file,
+                version: split[split.length - 1],
+                sequence: unpackInteger(split.length - 2)
+              }
+            })
+            .filter(function (record) {
+              return record.sequence <= sequence
+            })
+            .sort(function (a, b) {
+              if (a.version < b.version) {
+                return -1
+              } else if (a.version > b.version) {
+                return 1
+              } else {
+                return 0
+              }
+            })
+            .reverse()
+          source(size, next)
+        }
       })
-    })
-  )
+    } else {
+      var file = files.shift()
+      fs.readFile(file, 'utf8', ecb(next, function (read) {
+        parse(read, ecb(next, function (object) {
+          var split = file.split('/')
+          next(null, {
+            version: split[split.length - 1],
+            sequence: unpackInteger(split.length - 2),
+            tree: object
+          })
+        }))
+      }))
+    }
+  })
+}
+
+prototype._path = function (/* variadic */) {
+  return path.join.apply(path, [this._directory].concat(arguments))
 }
 
 // Use key-only index records to find all direct and indirect dependents
