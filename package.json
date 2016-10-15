@@ -3,7 +3,7 @@
   "description": "follow npm registry updates, calculating flat dependency graphs",
   "version": "1.0.1",
   "author": "Kyle E. Mitchell <kyle@kemitchell.com> (https://kemitchell.com/)",
-  "bin": "server",
+  "bin": "server.js",
   "dependencies": {
     "async-each-series": "^1.1.0",
     "async.each": "^0.5.2",
@@ -52,7 +52,7 @@
   "scripts": {
     "lint": "standard",
     "test": "node test.js",
-    "precoverage": "istanbul cover -- test.js",
+    "precoverage": "istanbul cover -x server.js -- test.js",
     "coverage": "istanbul check-coverage --statements 100 --functions 100 --branches 100 --lines 100"
   }
 }
