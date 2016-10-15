@@ -40,12 +40,9 @@ module.exports = FlatDependencyFollower
 //
 // - A "version" is a node-semver version or URL.
 
-// LevelUP Record Structure
+// Directory Structure
 //
-// All LevelUP keys are formed by concatenating string components to
-// create meaningful prefixes.  Components are encoded URI-style, with
-// slashes and %-codes.  lexicographic-integer encodes sequence number
-// integers to hex.
+// The follower stores data in a directory on the file system.
 //
 // Last Updates
 //
@@ -61,14 +58,14 @@ module.exports = FlatDependencyFollower
 //
 //     pointer/{name}/{version}/{sequence}
 //
-// `prototype.query` uses these "pointer" keys to find the last tree
+// `prototype.query` uses these "pointer" links to find the last tree
 // record key for a package by sequence number.
 //
 // Dependency Relationships
 //
 //     dependency/{dependency}/{sequence}/{range}/{dependent}/{version}
 //
-// `prototype._findDependents` uses these keys to identify existing
+// `prototype._findDependents` uses these paths to identify existing
 // package trees that need to be updated.
 var UPDATE_PREFIX = 'update'
 var TREE_PREFIX = 'tree'
