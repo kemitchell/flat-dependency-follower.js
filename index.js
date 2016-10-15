@@ -10,7 +10,7 @@ var inherits = require('util').inherits
 var lexint = require('lexicographic-integer')
 var mergeFlatTrees = require('merge-flat-package-trees')
 var normalize = require('normalize-registry-metadata')
-var parse = require('json-parse-errback')
+var parseJSON = require('json-parse-errback')
 var path = require('path')
 var pump = require('pump')
 var runWaterfall = require('run-waterfall')
@@ -323,7 +323,7 @@ prototype._createTreeStream = function (sequence, name) {
     } else {
       var file = files.shift()
       fs.readFile(file, 'utf8', ecb(next, function (read) {
-        parse(read, ecb(next, function (object) {
+        parseJSON(read, ecb(next, function (object) {
           var split = file.split('/')
           next(null, {
             version: split[split.length - 1],
@@ -381,31 +381,27 @@ prototype._createDependentsStream = function (sequence, name, version) {
 }
 
 prototype._getLastUpdate = function (name, callback) {
-  var updateKey = encodeKey(UPDATE_PREFIX, name)
-  this._levelup.get(updateKey, function (error, result) {
+  var path = this._path(UPDATE_PREFIX, name)
+  fs.readFile(path, function (error, buffer) {
     if (error) {
-      /* istanbul ignore else */
-      if (error.notFound) {
-        callback(null, [])
-      } else {
-        callback(error)
-      }
+      callback(null, [])
     } else {
-      callback(null, result)
+      parseJSON(buffer, function (object) {
+        callback(null, object)
+      })
     }
   })
 }
 
 prototype._putUpdate = function (chunk, callback) {
-  var value = Object.keys(chunk.versions)
-  .map(function (version) {
+  var value = Object.keys(chunk.versions).map(function (version) {
     return {
       updatedVersion: version,
       ranges: chunk.versions[version].dependencies
     }
-  }, [])
-  var updateKey = encodeKey(UPDATE_PREFIX, chunk.name)
-  this._levelup.put(updateKey, value, callback)
+  })
+  var path = this._path(UPDATE_PREFIX, chunk.name)
+  fs.writeFile(path, JSON.stringify(value), callback)
 }
 
 prototype._updateVersion = function (sequence, version, callback) {
