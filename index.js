@@ -344,38 +344,40 @@ prototype._path = function (/* variadic */) {
 // on a specific version of a specific package at or before a given
 // sequence number.
 prototype._createDependentsStream = function (sequence, name, version) {
-  return pump(
-    this._levelup.createReadStream({
-      // Encode the low LevelUP key with an empty string suffix so
-      // `encodeKey` will append the component separator, a slash.
-      gt: encodeKey(DEPENDENCY_PREFIX, name, ZERO, ''),
-      // LevelUP key components are URI-encoded ASCII, so the tilde
-      // character is high.
-      lt: encodeKey(DEPENDENCY_PREFIX, name, sequence, '~'),
-      keys: true,
-      // There are no meaningful values, so we can skip them.
-      values: false
-    }),
-    through.obj(function (key, _, done) {
-      var decoded = decodeKey(key)
-      var range = decoded[3]
-      if (semver.satisfies(version, range)) {
-        done(null, {
-          sequence: decoded[2],
-          dependency: {
-            name: decoded[1],
-            range: range
-          },
-          dependent: {
-            name: decoded[4],
-            version: decoded[5]
-          }
-        })
-      } else {
-        done()
-      }
-    })
-  )
+  var directory = this._path('dependencies', name)
+  var files = null
+  return from2.obj(function (_, next) {
+    if (files === null) {
+      recursiveReaddir(directory, function (error, read) {
+        if (error) {
+          next(null, null)
+        } else {
+          files = read
+            .map(function (file) {
+              var split = file.split('/')
+              var length = split.length
+              return {
+                sequence: split[length - 4],
+                dependency: {
+                  name: split[length - 5],
+                  range: split[length - 3]
+                },
+                dependent: {
+                  name: split[length - 2],
+                  version: split[length - 1]
+                }
+              }
+            })
+            .filter(function (record) {
+              return (
+                record.sequence <= sequence &&
+                semver.satisfies(version, record.range)
+              )
+            })
+        }
+      })
+    }
+  })
 }
 
 prototype._getLastUpdate = function (name, callback) {
