@@ -6,6 +6,7 @@ var fs = require('fs')
 var http = require('http')
 var https = require('https')
 var parse = require('json-parse-errback')
+var path = require('path')
 var pino = require('pino')
 var pump = require('pump')
 var through = require('through2')
@@ -13,16 +14,16 @@ var url = require('url')
 
 var REPLICATE_API = 'replicate.npmjs.com'
 
-var SEQUENCE = process.env.SEQUENCE || 'sequence'
+var DIRECTORY = process.env.DIRECTORY || 'follower'
+
 var from = null
 try {
-  var read = fs.readFileSync(SEQUENCE)
+  var read = fs.readFileSync(path.join(DIRECTORY, 'sequence'))
   from = parseInt(read.toString())
 } catch (error) {
   from = 0
 }
 
-var DIRECTORY = process.env.DIRECTORY || 'follower'
 var follower = new Follower(DIRECTORY)
 var log = pino({
   level: 'info' || process.env.LOG_LEVEL.toLowerCase()
@@ -168,10 +169,6 @@ pump(
       dependent: update.dependent,
       dependency: update.dependency
     }, 'updated')
-  })
-  .on('sequence', function (sequence) {
-    log.info({sequence: sequence})
-    fs.writeFile(SEQUENCE, String(sequence))
   })
   .on('finish', function () {
     log.info('finish')

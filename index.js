@@ -115,7 +115,7 @@ prototype._write = function (chunk, encoding, callback) {
   function finish () {
     self._sequence = sequence
     self.emit('sequence', sequence)
-    callback()
+    fs.writeFile(self._path('sequence'), sequence.toString(), callback)
   }
 
   runWaterfall(
