@@ -51,7 +51,7 @@
   "scripts": {
     "lint": "standard",
     "test": "node test.js",
-    "precoverage": "istanbul cover -- test.js",
+    "precoverage": "istanbul cover -x server.js -- test.js",
     "coverage": "istanbul check-coverage --statements 100 --functions 100 --branches 100 --lines 100"
   }
 }
