@@ -16,7 +16,6 @@ var pump = require('pump')
 var runWaterfall = require('run-waterfall')
 var semver = require('semver')
 var sortFlatTree = require('sort-flat-package-tree')
-var through = require('through2')
 var to = require('flush-write-stream')
 var updateFlatTree = require('update-flat-package-tree')
 
@@ -215,8 +214,6 @@ prototype._treeFor = function (
     })
   )
 }
-
-var ZERO = packInteger(0)
 
 // Find the tree for the highest package version that satisfies a given
 // SemVer range.
@@ -674,12 +671,6 @@ function encodeKey (/* variadic */) {
   return slice.call(arguments)
   .map(encodeURIComponent)
   .join('/')
-}
-
-function decodeKey (key) {
-  return key
-  .split('/')
-  .map(decodeURIComponent)
 }
 
 function packInteger (integer) {
