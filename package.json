@@ -3,7 +3,7 @@
   "description": "follow npm registry updates, calculating flat dependency graphs",
   "version": "1.0.1",
   "author": "Kyle E. Mitchell <kyle@kemitchell.com> (https://kemitchell.com/)",
-  "bin": "server",
+  "bin": "server.js",
   "dependencies": {
     "async-each-series": "^1.1.0",
     "async.each": "^0.5.2",
