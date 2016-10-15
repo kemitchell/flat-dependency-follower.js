@@ -366,15 +366,16 @@ prototype._createDependentsStream = function (sequence, name, version) {
             .map(function (file) {
               var split = file.split('/')
               var length = split.length
+              var dependent = split[length - 1].split('@')
               var record = {
-                sequence: unpackInteger(split[length - 4]),
+                sequence: unpackInteger(split[length - 3]),
                 dependency: {
-                  name: split[length - 5],
-                  range: split[length - 3]
+                  name: split[length - 4],
+                  range: split[length - 2]
                 },
                 dependent: {
-                  name: split[length - 2],
-                  version: split[length - 1]
+                  name: dependent.slice(0, -1).join(''),
+                  version: dependent[dependent.length - 1]
                 }
               }
               return record
@@ -511,8 +512,7 @@ prototype._updateVersion = function (sequence, version, callback) {
                 dependencyName,
                 packed,
                 range,
-                updatedName,
-                updatedVersion
+                updatedName + '@' + updatedVersion
               )
             })
           }
