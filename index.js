@@ -158,7 +158,9 @@ prototype._treeFor = function (
     Object.keys(ranges).map(function (dependencyName) {
       return {
         name: dependencyName,
-        range: ranges[dependencyName]
+        range: typeof ranges[dependencyName] === 'string'
+          ? ranges[dependencyName]
+          : 'Invalid Range'
       }
     }),
 
