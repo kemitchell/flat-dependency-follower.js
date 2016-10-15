@@ -593,28 +593,29 @@ prototype.query = function (name, version, sequence, callback) {
   if (typeof sequence === 'number') {
     sequence = packInteger(sequence)
   }
-  var readStream = self._levelup.createReadStream({
-    gt: encodeKey(POINTER_PREFIX, name, version, ''),
-    lte: encodeKey(POINTER_PREFIX, name, version, sequence),
-    reverse: true,
-    limit: 1,
-    keys: true,
-    values: false
-  })
-  .once('error', /* istanbul ignore next */ function (error) {
-    callback(error)
-  })
-  .on('data', function (key) {
-    var decoded = decodeKey(key)
-    readStream.destroy()
-    var at = decoded[3]
-    var resolvedKey = encodeKey(TREE_PREFIX, name, at, version)
-    self._levelup.get(resolvedKey, ecb(callback, function (tree) {
-      callback(null, tree, unpackInteger(at))
-    }))
-  })
-  .once('end', function () {
-    callback(null, null, null)
+  var directory = self._path(POINTER_PREFIX, name, version)
+  fs.readdir(directory, function (error, files) {
+    if (error) {
+      callback(null, null, null)
+    } else {
+      files = files.sort().reverse()
+      var length = files.length
+      for (var index = 0; index < length; index++) {
+        var file = files[index]
+        var split = file.split('/')
+        var linkSequence = split[split.length - 1]
+        if (linkSequence > sequence) {
+          continue
+        } else {
+          return fs.readFile(file, ecb(callback, function (buffer) {
+            parseJSON(buffer, ecb(callback, function (record) {
+              callback(null, record, unpackInteger(linkSequence))
+            }))
+          }))
+        }
+      }
+      callback(null, null, null)
+    }
   })
 }
 
