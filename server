@@ -5,7 +5,6 @@ var ecb = require('ecb')
 var fs = require('fs')
 var http = require('http')
 var https = require('https')
-var level = require('level')
 var parse = require('json-parse-errback')
 var pino = require('pino')
 var pump = require('pump')
@@ -23,10 +22,8 @@ try {
   from = 0
 }
 
-var LEVEL = process.env.LEVELDB || 'follower.leveldb'
-var levelup = level(LEVEL, {valueEncoding: 'json'})
-
-var follower = new Follower(levelup)
+var DIRECTORY = process.env.DIRECTORY || 'follower'
+var follower = new Follower(DIRECTORY)
 var log = pino({
   level: 'info' || process.env.LOG_LEVEL.toLowerCase()
 })
@@ -156,30 +153,30 @@ pump(
   }),
   follower
 )
-.on('error', logError)
-.on('missing', function (info) {
-  log.warn(info, 'missing')
-})
-.on('updating', function (name) {
-  log.info({name: name}, 'updating')
-})
-.on('versions', function (versions) {
-  log.debug({versions: versions})
-})
-.on('updated', function (update) {
-  log.debug({
-    dependent: update.dependent,
-    dependency: update.dependency
-  }, 'updated')
-})
-.on('sequence', function (sequence) {
-  log.info({sequence: sequence})
-  fs.writeFile(SEQUENCE, String(sequence))
-})
-.on('finish', function () {
-  log.info('finish')
-  exit()
-})
+  .on('error', logError)
+  .on('missing', function (info) {
+    log.warn(info, 'missing')
+  })
+  .on('updating', function (name) {
+    log.info({name: name}, 'updating')
+  })
+  .on('versions', function (versions) {
+    log.debug({versions: versions})
+  })
+  .on('updated', function (update) {
+    log.debug({
+      dependent: update.dependent,
+      dependency: update.dependency
+    }, 'updated')
+  })
+  .on('sequence', function (sequence) {
+    log.info({sequence: sequence})
+    fs.writeFile(SEQUENCE, String(sequence))
+  })
+  .on('finish', function () {
+    log.info('finish')
+    exit()
+  })
 
 function logError (error) {
   log.error(error)
@@ -189,9 +186,6 @@ function logError (error) {
 function exit () {
   server.close(function () {
     log.info('closed server')
-    levelup.close(function () {
-      log.info('closed levelup')
-      process.exit(1)
-    })
+    process.exit(1)
   })
 }

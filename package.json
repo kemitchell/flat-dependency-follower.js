@@ -5,19 +5,23 @@
   "author": "Kyle E. Mitchell <kyle@kemitchell.com> (https://kemitchell.com/)",
   "bin": "server",
   "dependencies": {
+    "async-each-series": "^1.1.0",
     "async.each": "^0.5.2",
     "async.map": "^0.5.2",
     "changes-stream": "^2.1.0",
     "deep-equal": "^1.0.1",
     "ecb": "^1.0.0",
     "flush-write-stream": "^1.0.0",
-    "json-parse-errback": "^2.0.0",
-    "level": "^1.4.0",
+    "from2": "^2.3.0",
+    "json-parse-errback": "^2.0.1",
     "lexicographic-integer": "^1.1.0",
+    "lnf": "^1.3.5",
     "merge-flat-package-trees": "^2.0.0",
+    "mkdirp": "^0.5.1",
     "normalize-registry-metadata": "^1.1.2",
     "pino": "^2.7.5",
     "pump": "^1.0.1",
+    "recursive-readdir": "^2.1.0",
     "run-waterfall": "^1.1.3",
     "semver": "^5.2.0",
     "sort-flat-package-tree": "^1.0.0",
@@ -27,10 +31,10 @@
   "devDependencies": {
     "from2-array": "0.0.4",
     "istanbul": "^0.4.4",
-    "memdb": "^1.3.1",
     "run-parallel": "^1.1.6",
     "standard": "^8.4.0",
-    "tape": "^4.6.0"
+    "tape": "^4.6.0",
+    "temporary-directory": "^1.0.2"
   },
   "files": [
     "index.js",
