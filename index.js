@@ -1,6 +1,5 @@
 var Writable = require('stream').Writable
 var asyncEach = require('async.each')
-var recursiveReaddir = require('recursive-readdir')
 var asyncMap = require('async.map')
 var deepEqual = require('deep-equal')
 var ecb = require('ecb')
@@ -9,10 +8,12 @@ var fs = require('fs')
 var inherits = require('util').inherits
 var lexint = require('lexicographic-integer')
 var mergeFlatTrees = require('merge-flat-package-trees')
+var mkdirp = require('mkdirp')
 var normalize = require('normalize-registry-metadata')
 var parseJSON = require('json-parse-errback')
 var path = require('path')
 var pump = require('pump')
+var recursiveReaddir = require('recursive-readdir')
 var runWaterfall = require('run-waterfall')
 var semver = require('semver')
 var sortFlatTree = require('sort-flat-package-tree')
@@ -474,7 +475,7 @@ prototype._updateVersion = function (sequence, version, callback) {
 
         withRanges.forEach(function (range) {
           updatedBatch.push({
-            key: encodeKey(
+            path: path.join(
               DEPENDENCY_PREFIX,
               dependencyName,
               packed,
@@ -510,6 +511,17 @@ prototype._updateVersion = function (sequence, version, callback) {
       )
     })
   )
+}
+
+prototype._batch = function (batch, callback) {
+  var self = this
+  asyncEach(batch, function (instruction, done) {
+    var path = self.path(instruction.path)
+    var value = JSON.stringify(instruction.value)
+    mkdirp(path.dirname(path), ecb(done, function () {
+      fs.writeFile(path, value, done)
+    }))
+  }, callback)
 }
 
 prototype._updateDependent = function (
@@ -665,14 +677,6 @@ prototype.sequence = function () {
 
 // LevelUP String Encoding Helper Functions
 
-var slice = Array.prototype.slice
-
-function encodeKey (/* variadic */) {
-  return slice.call(arguments)
-  .map(encodeURIComponent)
-  .join('/')
-}
-
 function packInteger (integer) {
   return lexint.pack(integer, 'hex')
 }
@@ -709,11 +713,11 @@ function completeBatch (batch) {
 
 function pushTreeRecords (batch, name, version, tree, packed) {
   batch.push({
-    key: encodeKey(TREE_PREFIX, name, packed, version),
+    path: path.join(TREE_PREFIX, name, packed, version),
     value: tree
   })
   batch.push({
-    key: encodeKey(POINTER_PREFIX, name, version, packed)
+    path: path.join(POINTER_PREFIX, name, version, packed)
   })
 }
 
