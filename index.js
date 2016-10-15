@@ -621,21 +621,21 @@ prototype.query = function (name, version, sequence, callback) {
 
 // Get all currently know versions of a package, by name.
 prototype.versions = function (name, callback) {
-  var self = this
-  var key = encodeKey(UPDATE_PREFIX, name)
-  self._levelup.get(key, function (error, data) {
+  var path = this._path(UPDATE_PREFIX, name)
+  fs.readFile(path, function (error, buffer) {
     if (error) {
-      /* istanbul ignore else */
-      if (error.notFound) {
+      if (error.code === 'ENOENT') {
         callback(null, null)
       } else {
         callback(error)
       }
     } else {
-      var versions = data.map(function (element) {
-        return element.updatedVersion
-      })
-      callback(null, versions)
+      parseJSON(buffer, ecb(callback, function (record) {
+        var versions = record.map(function (element) {
+          return element.updatedVersion
+        })
+        callback(null, versions)
+      }))
     }
   })
 }
