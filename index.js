@@ -1,5 +1,6 @@
 var Writable = require('stream').Writable
 var asyncEach = require('async.each')
+var asyncEachSeries = require('async-each-series')
 var asyncMap = require('async.map')
 var deepEqual = require('deep-equal')
 var ecb = require('ecb')
@@ -46,31 +47,31 @@ module.exports = FlatDependencyFollower
 //
 // Last Updates
 //
-//     update/{name} -> [{version, dependencies}, ...]
+//   last_updates/{name} -> [{version, dependencies}, ...]
 //
 // Dependency Trees
 //
-//     tree/{name}/{sequence}/{version} -> Array
+//   trees/{name}/{sequence}/{version} -> Array
 //
 // These records store the precomputed flat package trees.  The prefix
 // leads with sequence, rather than version, because Semantic Versions
 // strings aren't lexicographically ordered.
 //
-//     pointer/{name}/{version}/{sequence}
+//   links/{name}/{version}/{sequence}
 //
 // `prototype.query` uses these "pointer" links to find the last tree
 // record key for a package by sequence number.
 //
 // Dependency Relationships
 //
-//     dependency/{dependency}/{sequence}/{range}/{dependent}/{version}
+//   dependencies/{dependency}/{sequence}/{range}/{dependent}/{version}
 //
 // `prototype._findDependents` uses these paths to identify existing
 // package trees that need to be updated.
-var UPDATE_PREFIX = 'update'
-var TREE_PREFIX = 'tree'
-var POINTER_PREFIX = 'pointer'
-var DEPENDENCY_PREFIX = 'dependency'
+var UPDATE_PREFIX = 'last_updates'
+var TREE_PREFIX = 'trees'
+var LINK_PREFIX = 'links'
+var DEPENDENCY_PREFIX = 'dependencies'
 
 function FlatDependencyFollower (directory) {
   if (!(this instanceof FlatDependencyFollower)) {
@@ -124,7 +125,7 @@ prototype._write = function (chunk, encoding, callback) {
         self._getLastUpdate(updatedName, done)
       },
 
-      // Identify changed versions and process them.
+      // Identify new and changed versions and process them.
       function (lastUpdate, done) {
         var versions = changedVersions(lastUpdate, chunk)
         lastUpdate = null
@@ -255,15 +256,15 @@ prototype._maxSatisfying = function (sequence, name, range, callback) {
           range: range,
           // Link to all direct dependencies.
           links: maxSatisfying.tree
-          .reduce(function (links, dependency) {
-            return dependency.range
-            ? links.concat({
-              name: dependency.name,
-              version: dependency.version,
-              range: dependency.range
-            })
-            : links
-          }, [])
+            .reduce(function (links, dependency) {
+              return dependency.range
+              ? links.concat({
+                name: dependency.name,
+                version: dependency.version,
+                range: dependency.range
+              })
+              : links
+            }, [])
         }
       ]
 
@@ -283,20 +284,21 @@ prototype._maxSatisfying = function (sequence, name, range, callback) {
 prototype._createTreeStream = function (sequence, name) {
   var self = this
   var directory = self._path(TREE_PREFIX, name)
-  var files = null
-  return from2.obj(function source (size, next) {
-    if (files === null) {
+  var matches = null
+  return from2.obj(function source (_, next) {
+    if (matches === null) {
       recursiveReaddir(directory, function (error, read) {
         if (error) {
           next(null, null)
         } else {
-          files = read
+          matches = read
             .map(function (file) {
               var split = file.split('/')
+              var length = split.length
               return {
                 file: file,
-                version: split[split.length - 1],
-                sequence: unpackInteger(split.length - 2)
+                version: split[length - 1],
+                sequence: unpackInteger(split[length - 2])
               }
             })
             .filter(function (record) {
@@ -312,27 +314,31 @@ prototype._createTreeStream = function (sequence, name) {
               }
             })
             .reverse()
-          source(size, next)
+          source(_, next)
         }
       })
     } else {
-      var file = files.shift()
-      fs.readFile(file, 'utf8', ecb(next, function (read) {
-        parseJSON(read, ecb(next, function (object) {
-          var split = file.split('/')
-          next(null, {
-            version: split[split.length - 1],
-            sequence: unpackInteger(split.length - 2),
-            tree: object
-          })
+      var match = matches.shift()
+      if (match) {
+        fs.readFile(match.file, ecb(next, function (read) {
+          parseJSON(read, ecb(next, function (object) {
+            next(null, {
+              version: match.version,
+              sequence: match.sequence,
+              tree: object
+            })
+          }))
         }))
-      }))
+      } else {
+        next(null, null)
+      }
     }
   })
 }
 
 prototype._path = function (/* variadic */) {
-  return path.join.apply(path, [this._directory].concat(arguments))
+  var args = Array.prototype.slice.call(arguments)
+  return path.join.apply(path, [this._directory].concat(args))
 }
 
 // Use key-only index records to find all direct and indirect dependents
@@ -340,19 +346,23 @@ prototype._path = function (/* variadic */) {
 // sequence number.
 prototype._createDependentsStream = function (sequence, name, version) {
   var directory = this._path(DEPENDENCY_PREFIX, name)
-  var files = null
-  return from2.obj(function (_, next) {
-    if (files === null) {
+  var dependents = null
+  return from2.obj(function source (_, next) {
+    if (dependents === null) {
       recursiveReaddir(directory, function (error, read) {
         if (error) {
-          next(null, null)
+          if (error.code === 'ENOENT') {
+            next(null, null)
+          } else {
+            next(error)
+          }
         } else {
-          files = read
+          dependents = read
             .map(function (file) {
               var split = file.split('/')
               var length = split.length
-              return {
-                sequence: split[length - 4],
+              var record = {
+                sequence: unpackInteger(split[length - 4]),
                 dependency: {
                   name: split[length - 5],
                   range: split[length - 3]
@@ -362,15 +372,24 @@ prototype._createDependentsStream = function (sequence, name, version) {
                   version: split[length - 1]
                 }
               }
+              return record
             })
             .filter(function (record) {
               return (
                 record.sequence <= sequence &&
-                semver.satisfies(version, record.range)
+                semver.satisfies(version, record.dependency.range)
               )
             })
+          source(_, next)
         }
       })
+    } else {
+      var dependent = dependents.shift()
+      if (dependent) {
+        next(null, dependent)
+      } else {
+        next(null, null)
+      }
     }
   })
 }
@@ -379,11 +398,15 @@ prototype._getLastUpdate = function (name, callback) {
   var path = this._path(UPDATE_PREFIX, name)
   fs.readFile(path, function (error, buffer) {
     if (error) {
-      callback(null, [])
+      if (error.code === 'ENOENT') {
+        callback(null, [])
+      } else {
+        callback(error)
+      }
     } else {
-      parseJSON(buffer, function (object) {
+      parseJSON(buffer, ecb(callback, function (object) {
         callback(null, object)
-      })
+      }))
     }
   })
 }
@@ -395,8 +418,12 @@ prototype._putUpdate = function (chunk, callback) {
       ranges: chunk.versions[version].dependencies
     }
   })
-  var path = this._path(UPDATE_PREFIX, chunk.name)
-  fs.writeFile(path, JSON.stringify(value), callback)
+  var file = this._path(UPDATE_PREFIX, chunk.name)
+  mkdirp(path.dirname(file), ecb(callback, function () {
+    fs.writeFile(file, JSON.stringify(value), function (error) {
+      callback(error)
+    })
+  }))
 }
 
 prototype._updateVersion = function (sequence, version, callback) {
@@ -486,7 +513,7 @@ prototype._updateVersion = function (sequence, version, callback) {
 
       completeBatch(updatedBatch)
 
-      self._levelup.batch(
+      self._batch(
         updatedBatch,
         ecb(callback, function () {
           updatedBatch = null
@@ -512,11 +539,16 @@ prototype._updateVersion = function (sequence, version, callback) {
 
 prototype._batch = function (batch, callback) {
   var self = this
-  asyncEach(batch, function (instruction, done) {
-    var path = self.path(instruction.path)
-    var value = JSON.stringify(instruction.value)
-    mkdirp(path.dirname(path), ecb(done, function () {
-      fs.writeFile(path, value, done)
+  asyncEachSeries(batch, function (instruction, done) {
+    var file = self._path(instruction.path)
+    var directory = path.dirname(file)
+    mkdirp(directory, ecb(done, function () {
+      if (instruction.link) {
+        var target = self._path(instruction.link)
+        fs.symlink(target, file, done)
+      } else {
+        fs.writeFile(file, JSON.stringify(instruction.value), done)
+      }
     }))
   }, callback)
 }
@@ -575,7 +607,7 @@ prototype._updateDependent = function (
         batch, name, version, result, packed
       )
       completeBatch(batch)
-      self._levelup.batch(batch, ecb(callback, function () {
+      self._batch(batch, ecb(callback, function () {
         batch = null
         self.emit('updated', {
           dependency: {
@@ -599,25 +631,34 @@ prototype.query = function (name, version, sequence, callback) {
   if (typeof sequence === 'number') {
     sequence = packInteger(sequence)
   }
-  var directory = self._path(POINTER_PREFIX, name, version)
-  fs.readdir(directory, function (error, files) {
+  var directory = self._path(LINK_PREFIX, name, version)
+  fs.readdir(directory, function (error, read) {
     if (error) {
       callback(null, null, null)
     } else {
-      files = files.sort().reverse()
-      var length = files.length
+      var links = read.sort().reverse()
+      var length = links.length
       for (var index = 0; index < length; index++) {
-        var file = files[index]
-        var split = file.split('/')
-        var linkSequence = split[split.length - 1]
-        if (linkSequence > sequence) {
+        var link = links[index]
+        if (link > sequence) {
           continue
         } else {
-          return fs.readFile(file, ecb(callback, function (buffer) {
-            parseJSON(buffer, ecb(callback, function (record) {
-              callback(null, record, unpackInteger(linkSequence))
-            }))
-          }))
+          var linkPath = path.join(directory, link)
+          return fs.readlink(linkPath, function (error, file) {
+            if (error) {
+              if (error.code === 'ENOENT') {
+                callback(null, null, null)
+              } else {
+                callback(error)
+              }
+            } else {
+              fs.readFile(file, ecb(callback, function (buffer) {
+                parseJSON(buffer, ecb(callback, function (record) {
+                  callback(null, record, unpackInteger(link))
+                }))
+              }))
+            }
+          })
         }
       }
       callback(null, null, null)
@@ -714,7 +755,8 @@ function pushTreeRecords (batch, name, version, tree, packed) {
     value: tree
   })
   batch.push({
-    path: path.join(POINTER_PREFIX, name, version, packed)
+    path: path.join(LINK_PREFIX, name, version, packed),
+    link: path.join(TREE_PREFIX, name, packed, version)
   })
 }
 

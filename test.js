@@ -327,7 +327,7 @@ tape('y@1.0.0 ; x -> y@^1.0.0 ; y@1.0.1', function (test) {
             done()
           })
         }
-      ], function (error, done) {
+      ], function (error) {
         test.ifError(error, 'no error')
         done()
       })
@@ -503,13 +503,20 @@ tape('dependency appears later', function (test) {
             test.ifError(error, 'no error')
             test.deepEqual(
               tree,
-              [{name: 'y', version: '1.0.0', range: '^1.0.0', links: []}],
+              [
+                {
+                  name: 'y',
+                  version: '1.0.0',
+                  range: '^1.0.0',
+                  links: []
+                }
+              ],
               'updated x depends on y@1.0.1'
             )
             done()
           })
         }
-      ], function (error, done) {
+      ], function (error) {
         test.ifError(error, 'no error')
         done()
       })
@@ -561,12 +568,12 @@ tape('non-publish update', function (test) {
   })
 })
 
-function testFollower (test, updates, limit, callback) {
+function testFollower (test, updates, callback) {
   temporaryDirectory(function (error, directory, done) {
     test.ifError(error)
     var follower = Math.random() > 0.5
-    ? new FlatDependencyFollower(directory, limit)
-    : FlatDependencyFollower(directory, limit)
+    ? new FlatDependencyFollower(directory)
+    : FlatDependencyFollower(directory)
     from2Array(
       updates.map(function (update, index) {
         return {
