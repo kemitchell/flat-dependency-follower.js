@@ -360,7 +360,7 @@ tape('y@1.0.0 ; x -> y@^1.0.0 and z@git', function (test) {
             {
               name: 'z',
               version: 'example/example',
-              range: 'example/example',
+              range: null,
               links: []
             }
           ],
@@ -560,6 +560,33 @@ tape('non-publish update', function (test) {
         test.deepEqual(
           tree,
           [{name: 'y', version: '1.0.0', range: '^1.0.0', links: []}],
+          'yields tree'
+        )
+        done()
+      })
+    })
+  })
+})
+
+tape('malformed dependencies object', function (test) {
+  testFollower(test, [
+    {name: 'x', versions: {'1.0.0': {dependencies: {}}}},
+    {
+      name: 'y',
+      versions: {
+        '1.0.0': {
+          dependencies: {x: {version: '1.0.0'}} // Invalid
+        }
+      }
+    }
+  ], function (follower, done) {
+    follower.once('finish', function () {
+      follower.query('y', '1.0.0', 2, function (error, tree, sequence) {
+        test.ifError(error, 'no error')
+        test.equal(sequence, 2, 'sequence is 2')
+        test.deepEqual(
+          tree,
+          [{name: 'x', version: 'INVALID', range: null, links: []}],
           'yields tree'
         )
         done()

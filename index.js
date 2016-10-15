@@ -159,18 +159,21 @@ prototype._treeFor = function (
     Object.keys(ranges).map(function (dependencyName) {
       return {
         name: dependencyName,
-        range: ranges[dependencyName]
+        range: (typeof ranges[dependencyName] === 'string')
+          ? ranges[dependencyName]
+          : 'INVALID'
       }
     }),
 
     // For each name-and-range pair...
     function (dependency, done) {
-      if (semver.validRange(dependency.range) === null) {
+      var range = semver.validRange(dependency.range)
+      if (range === null) {
         done(null, [
           {
             name: dependency.name,
             version: dependency.range,
-            range: dependency.range,
+            range: range,
             links: []
           }
         ])
@@ -502,16 +505,19 @@ prototype._updateVersion = function (sequence, version, callback) {
         })
 
         withRanges.forEach(function (range) {
-          updatedBatch.push({
-            path: path.join(
-              DEPENDENCY_PREFIX,
-              dependencyName,
-              packed,
-              range,
-              updatedName,
-              updatedVersion
-            )
-          })
+          range = semver.validRange(range)
+          if (range !== null) {
+            updatedBatch.push({
+              path: path.join(
+                DEPENDENCY_PREFIX,
+                dependencyName,
+                packed,
+                range,
+                updatedName,
+                updatedVersion
+              )
+            })
+          }
         })
       })
 
