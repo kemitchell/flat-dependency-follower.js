@@ -285,7 +285,7 @@ prototype._maxSatisfying = function (sequence, name, range, callback) {
 // Find all stored trees for a package at or before a given sequence.
 prototype._createTreeStream = function (sequence, name) {
   var self = this
-  var directory = self._path('trees', name)
+  var directory = self._path(TREE_PREFIX, name)
   var files = null
   return from2.obj(function source (size, next) {
     if (files === null) {
@@ -342,7 +342,7 @@ prototype._path = function (/* variadic */) {
 // on a specific version of a specific package at or before a given
 // sequence number.
 prototype._createDependentsStream = function (sequence, name, version) {
-  var directory = this._path('dependencies', name)
+  var directory = this._path(DEPENDENCY_PREFIX, name)
   var files = null
   return from2.obj(function (_, next) {
     if (files === null) {
