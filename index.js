@@ -596,8 +596,10 @@ function link (source, destination, callback) {
   fs.link(source, destination, function (error) {
     /* istanbul ignore if */
     if (error) {
-      if (error.code === 'ENOENT') {
-        console.error(error)
+      if (error.code === 'EEXIST') {
+        fs.unlink(source, ecb(error, function () {
+          link(source, destination, callback)
+        }))
       } else {
         callback(error)
       }
