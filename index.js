@@ -370,11 +370,18 @@ prototype._createDependentsStream = function (sequence, name, version) {
           fs.createReadStream(list.file)
             .pipe(ndjson.parse())
             .pipe(through2.obj(function (chunk, _, next) {
-              next(null, {
-                sequence: list.sequence,
-                dependency: list.dependency,
-                dependent: chunk
-              })
+              if (semver.satisfies(version, chunk.range)) {
+                next(null, {
+                  sequence: list.sequence,
+                  dependency: {
+                    name: name,
+                    range: chunk.range
+                  },
+                  dependent: chunk.dependent
+                })
+              } else {
+                next()
+              }
             }))
         )
       } else {
@@ -398,21 +405,13 @@ prototype._createDependentsStream = function (sequence, name, version) {
           .map(function (file) {
             var split = file.split('/')
             var length = split.length
-            var record = {
+            return {
               file: file,
-              sequence: unpackInteger(split[length - 2]),
-              dependency: {
-                name: split[length - 3],
-                range: split[length - 1]
-              }
+              sequence: unpackInteger(split[length - 1])
             }
-            return record
           })
           .filter(function (record) {
-            return (
-              record.sequence <= sequence &&
-              semver.satisfies(version, record.dependency.range)
-            )
+            return record.sequence <= sequence
           })
         callback()
       }
@@ -532,12 +531,14 @@ prototype._updateVersion = function (sequence, version, callback) {
               path: path.join(
                 DEPENDENCY_PREFIX,
                 dependencyName,
-                packed,
-                range
+                packed
               ),
               value: {
-                name: updatedName,
-                version: updatedVersion
+                range: range,
+                dependent: {
+                  name: updatedName,
+                  version: updatedVersion
+                }
               }
             })
           }
