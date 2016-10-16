@@ -170,12 +170,13 @@ prototype._treeFor = function (
 
     // For each name-and-range pair...
     function (dependency, done) {
-      if (semver.validRange(dependency.range) === null) {
+      var range = semver.validRange(dependency.range)
+      if (range === null) {
         done(null, [
           {
             name: dependency.name,
             version: dependency.range,
-            range: dependency.range,
+            range: range,
             links: []
           }
         ])
@@ -522,7 +523,8 @@ prototype._updateVersion = function (sequence, version, callback) {
         })
 
         withRanges.forEach(function (range) {
-          if (typeof range === 'string') {
+          range = semver.validRange(range)
+          if (range !== null) {
             updatedBatch.push({
               append: true,
               path: path.join(

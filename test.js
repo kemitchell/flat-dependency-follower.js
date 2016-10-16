@@ -360,7 +360,7 @@ tape('y@1.0.0 ; x -> y@^1.0.0 and z@git', function (test) {
             {
               name: 'z',
               version: 'example/example',
-              range: 'example/example',
+              range: null,
               links: []
             }
           ],
@@ -586,9 +586,7 @@ tape('malformed dependencies object', function (test) {
         test.equal(sequence, 2, 'sequence is 2')
         test.deepEqual(
           tree,
-          [
-            {name: 'x', version: 'INVALID', range: 'INVALID', links: []}
-          ],
+          [{name: 'x', version: 'INVALID', range: null, links: []}],
           'yields tree'
         )
         done()
