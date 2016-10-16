@@ -11,6 +11,8 @@ var lexint = require('lexicographic-integer')
 var lnf = require('lnf')
 var mergeFlatTrees = require('merge-flat-package-trees')
 var mkdirp = require('mkdirp')
+var multistream = require('multistream')
+var ndjson = require('ndjson')
 var normalize = require('normalize-registry-metadata')
 var parseJSON = require('json-parse-errback')
 var path = require('path')
@@ -19,6 +21,7 @@ var recursiveReaddir = require('recursive-readdir')
 var runWaterfall = require('run-waterfall')
 var semver = require('semver')
 var sortFlatTree = require('sort-flat-package-tree')
+var through2 = require('through2')
 var to = require('flush-write-stream')
 var updateFlatTree = require('update-flat-package-tree')
 
@@ -351,54 +354,68 @@ prototype._path = function (/* variadic */) {
 // sequence number.
 prototype._createDependentsStream = function (sequence, name, version) {
   var directory = this._path(DEPENDENCY_PREFIX, name)
-  var dependents = null
-  return from2.obj(function source (_, next) {
-    if (dependents === null) {
-      recursiveReaddir(directory, function (error, read) {
-        if (error) {
-          /* istanbul ignore else */
-          if (error.code === 'ENOENT') {
-            next(null, null)
-          } else {
-            next(error)
-          }
-        } else {
-          dependents = read
-            .map(function (file) {
-              var split = file.split('/')
-              var length = split.length
-              var dependent = split[length - 1].split('@')
-              var record = {
-                sequence: unpackInteger(split[length - 3]),
-                dependency: {
-                  name: split[length - 4],
-                  range: split[length - 2]
-                },
-                dependent: {
-                  name: dependent.slice(0, -1).join(''),
-                  version: dependent[dependent.length - 1]
-                }
-              }
-              return record
-            })
-            .filter(function (record) {
-              return (
-                record.sequence <= sequence &&
-                semver.satisfies(version, record.dependency.range)
-              )
-            })
-          source(_, next)
-        }
-      })
+  var lists = null
+  return multistream.obj(function factory (callback) {
+    if (lists === null) {
+      listDirectory(ecb(callback, function () {
+        factory(callback)
+      }))
     } else {
-      var dependent = dependents.shift()
-      if (dependent) {
-        next(null, dependent)
+      var list = lists.shift()
+      if (list) {
+        callback(
+          null,
+          fs.createReadStream(list.file)
+            .pipe(ndjson.parse())
+            .pipe(through2.obj(function (chunk, _, next) {
+              next(null, {
+                sequence: list.sequence,
+                dependency: list.dependency,
+                dependent: chunk
+              })
+            }))
+        )
       } else {
-        next(null, null)
+        callback(null, null)
       }
     }
   })
+
+  function listDirectory (callback) {
+    recursiveReaddir(directory, function (error, read) {
+      if (error) {
+        /* istanbul ignore else */
+        if (error.code === 'ENOENT') {
+          lists = []
+          callback()
+        } else {
+          callback(error)
+        }
+      } else {
+        lists = read
+          .map(function (file) {
+            var split = file.split('/')
+            var length = split.length
+            var record = {
+              file: file,
+              sequence: unpackInteger(split[length - 2]),
+              dependency: {
+                name: split[length - 3],
+                range: split[length - 1]
+              }
+            }
+            return record
+          })
+          .filter(function (record) {
+            return (
+              record.sequence <= sequence &&
+              semver.satisfies(version, record.dependency.range)
+            )
+          })
+        callback()
+      }
+    })
+  }
 }
 
 prototype._getLastUpdate = function (name, callback) {
@@ -509,13 +526,17 @@ prototype._updateVersion = function (sequence, version, callback) {
           range = semver.validRange(range)
           if (range !== null) {
             updatedBatch.push({
+              append: true,
               path: path.join(
                 DEPENDENCY_PREFIX,
                 dependencyName,
                 packed,
-                range,
-                updatedName + '@' + updatedVersion
-              )
+                range
+              ),
+              value: {
+                name: updatedName,
+                version: updatedVersion
+              }
             })
           }
         })
@@ -557,7 +578,12 @@ prototype._batch = function (batch, callback) {
         var target = self._path(instruction.link)
         lnf(target, file, done)
       } else {
-        fs.writeFile(file, JSON.stringify(instruction.value), done)
+        var value = JSON.stringify(instruction.value)
+        if (instruction.append) {
+          fs.appendFile(file, value + '\n', done)
+        } else {
+          fs.writeFile(file, JSON.stringify(instruction.value), done)
+        }
       }
     }))
   }, callback)
@@ -756,8 +782,6 @@ function validVersions (argument) {
 
 function completeBatch (batch) {
   batch.forEach(function (operation) {
-    // Make operations put operations by default.
-    operation.type = 'put'
     // Set a placeholder for key-only records.
     // These are used for indexing.
     if (!operation.hasOwnProperty('value')) {
