@@ -685,7 +685,7 @@ prototype.query = function (name, version, sequence, callback) {
   if (typeof sequence === 'number') {
     sequence = packInteger(sequence)
   }
-  var directory = self._path(LINK_PREFIX, name, version)
+  var directory = self._path(LINK_PREFIX, name + '@' + version)
   fs.readdir(directory, function (error, read) {
     /* istanbul ignore if */
     if (error) {
@@ -803,7 +803,7 @@ function pushTreeRecords (batch, name, version, tree, packed) {
     value: tree
   })
   batch.push({
-    path: path.join(LINK_PREFIX, name, version, packed),
+    path: path.join(LINK_PREFIX, name + '@' + version, packed),
     link: path.join(TREE_PREFIX, name, packed, version)
   })
 }
