@@ -150,6 +150,9 @@ pump(
     heartbeat: 'true',
     since: String(from),
     style: 'all_docs',
+    // Some of the documents in the registry are over 5MB.  Default,
+    // 16-object stream buffers can fill available memory quickly, so
+    // reduce to 2.
     highWaterMark: 2
   }),
   follower

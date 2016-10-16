@@ -85,6 +85,9 @@ function FlatDependencyFollower (directory) {
   this._sequence = 0
   Writable.call(this, {
     objectMode: true,
+    // Some of the documents in the registry are over 5MB.  Default,
+    // 16-object stream buffers can fill available memory quickly, so
+    // reduce to 2.
     highWaterMark: 2
   })
 }
