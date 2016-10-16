@@ -302,12 +302,11 @@ prototype._createTreeStream = function (sequence, name) {
         } else {
           matches = read
             .map(function (file) {
-              var split = file.split('/')
-              var length = split.length
+              var split = path.basename(file).split('@')
               return {
                 file: file,
-                version: split[length - 1],
-                sequence: unpackInteger(split[length - 2])
+                version: split[1],
+                sequence: unpackInteger(split[0])
               }
             })
             .filter(function (record) {
@@ -801,12 +800,12 @@ function completeBatch (batch) {
 
 function pushTreeRecords (batch, name, version, tree, packed) {
   batch.push({
-    path: path.join(TREE_PREFIX, name, packed, version),
+    path: path.join(TREE_PREFIX, name, packed + '@' + version),
     value: tree
   })
   batch.push({
     path: path.join(LINK_PREFIX, name + '@' + version, packed),
-    link: path.join(TREE_PREFIX, name, packed, version)
+    link: path.join(TREE_PREFIX, name, packed + '@' + version)
   })
 }
 
