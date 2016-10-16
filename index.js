@@ -164,7 +164,7 @@ prototype._treeFor = function (
         name: dependencyName,
         range: (typeof ranges[dependencyName] === 'string')
           ? ranges[dependencyName]
-          : null
+          : 'INVALID'
       }
     }),
 
