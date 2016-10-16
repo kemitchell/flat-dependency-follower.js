@@ -8,7 +8,6 @@ var from2 = require('from2')
 var fs = require('fs')
 var inherits = require('util').inherits
 var lexint = require('lexicographic-integer')
-var lnf = require('lnf')
 var mergeFlatTrees = require('merge-flat-package-trees')
 var mkdirp = require('mkdirp')
 var multistream = require('multistream')
@@ -579,7 +578,7 @@ prototype._batch = function (batch, callback) {
     mkdirp(directory, ecb(done, function () {
       if (instruction.link) {
         var target = self._path(instruction.link)
-        lnf(target, file, done)
+        link(target, file, done)
       } else {
         var value = JSON.stringify(instruction.value)
         if (instruction.append) {
@@ -590,6 +589,21 @@ prototype._batch = function (batch, callback) {
       }
     }))
   }, callback)
+}
+
+function link (source, destination, callback) {
+  fs.link(source, destination, function (error) {
+    /* istanbul ignore if */
+    if (error) {
+      if (error.code === 'ENOENT') {
+        console.error(error)
+      } else {
+        callback(error)
+      }
+    } else {
+      callback()
+    }
+  })
 }
 
 prototype._updateDependent = function (
@@ -688,22 +702,11 @@ prototype.query = function (name, version, sequence, callback) {
           continue
         } else {
           var linkPath = path.join(directory, link)
-          return fs.readlink(linkPath, function (error, file) {
-            /* istanbul ignore if */
-            if (error) {
-              if (error.code === 'ENOENT') {
-                callback(null, null, null)
-              } else {
-                callback(error)
-              }
-            } else {
-              fs.readFile(file, ecb(callback, function (buffer) {
-                parseJSON(buffer, ecb(callback, function (record) {
-                  callback(null, record, unpackInteger(link))
-                }))
-              }))
-            }
-          })
+          return fs.readFile(linkPath, ecb(callback, function (buffer) {
+            parseJSON(buffer, ecb(callback, function (record) {
+              callback(null, record, unpackInteger(link))
+            }))
+          }))
         }
       }
       callback(null, null, null)
