@@ -4,8 +4,9 @@ var asyncEachSeries = require('async-each-series')
 var asyncMap = require('async.map')
 var deepEqual = require('deep-equal')
 var ecb = require('ecb')
+var endOfStream = require('end-of-stream')
 var from2 = require('from2')
-var fs = require('fs')
+var from2String = require('from2-string')
 var inherits = require('util').inherits
 var lexint = require('lexicographic-integer')
 var mergeFlatTrees = require('merge-flat-package-trees')
@@ -76,11 +77,11 @@ var TREE_PREFIX = 'trees'
 var LINK_PREFIX = 'links'
 var DEPENDENCY_PREFIX = 'dependencies'
 
-function FlatDependencyFollower (directory) {
+function FlatDependencyFollower (store) {
   if (!(this instanceof FlatDependencyFollower)) {
-    return new FlatDependencyFollower(directory)
+    return new FlatDependencyFollower(store)
   }
-  this._directory = directory
+  this._store = store
   this._sequence = 0
   Writable.call(this, {
     objectMode: true,
@@ -346,8 +347,7 @@ prototype._createTreeStream = function (sequence, name) {
 }
 
 prototype._path = function (/* variadic */) {
-  var args = Array.prototype.slice.call(arguments)
-  return path.join.apply(path, [this._directory].concat(args))
+  return path.join.apply(path, arguments)
 }
 
 // Use key-only index records to find all direct and indirect dependents
@@ -577,35 +577,29 @@ prototype._batch = function (batch, callback) {
     if (instruction.existingPath) {
       link(self._path(instruction.existingPath), file, done)
     } else {
-      mkdirp(path.dirname(file), ecb(done, function () {
-        var value = JSON.stringify(instruction.value)
-        if (instruction.append) {
-          fs.appendFile(file, value + '\n', done)
-        } else {
-          fs.writeFile(file, JSON.stringify(instruction.value), done)
-        }
-      }))
+      var value = JSON.stringify(instruction.value)
+      if (instruction.append) {
+        pump(
+          multistream([
+            self._store.createReadStream(file),
+            from2String(value + '\n')
+          ]),
+          self._store.createWriteStream(file),
+          done
+        )
+      } else {
+        var stream = self._store.createWriteStream(file)
+        endOfStream(stream, callback)
+        stream.end(JSON.stringify(instruction.value))
+      }
     }
   }, callback)
 }
 
 function link (existingPath, newPath, callback) {
-  mkdirp(path.dirname(newPath), ecb(callback, function () {
-    fs.link(existingPath, newPath, function (error) {
-      /* istanbul ignore if */
-      if (error) {
-        if (error.code === 'EEXIST') {
-          fs.unlink(newPath, ecb(error, function () {
-            link(existingPath, newPath, callback)
-          }))
-        } else {
-          callback(error)
-        }
-      } else {
-        callback()
-      }
-    })
-  }))
+  var stream = this._store.createWriteStream(newPath)
+  endOfStream(stream, callback)
+  stream.end(existingPath)
 }
 
 prototype._updateDependent = function (

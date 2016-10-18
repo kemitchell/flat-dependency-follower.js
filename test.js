@@ -1,5 +1,5 @@
+var AbstractBlobStore = require('abstract-blob-store')
 var FlatDependencyFollower = require('./')
-var temporaryDirectory = require('temporary-directory')
 var from2Array = require('from2-array').obj
 var runParallel = require('run-parallel')
 var tape = require('tape')
@@ -596,23 +596,20 @@ tape('malformed dependencies object', function (test) {
 })
 
 function testFollower (test, updates, callback) {
-  temporaryDirectory(function (error, directory, done) {
-    test.ifError(error)
-    var follower = Math.random() > 0.5
-    ? new FlatDependencyFollower(directory)
-    : FlatDependencyFollower(directory)
-    from2Array(
-      updates.map(function (update, index) {
-        return {
-          seq: index + 1,
-          doc: update
-        }
-      })
-    )
-    .pipe(follower)
-    callback(follower, function () {
-      test.end()
-      done()
+  var store = new AbstractBlobStore()
+  var follower = Math.random() > 0.5
+    ? new FlatDependencyFollower(store)
+    : FlatDependencyFollower(store)
+  from2Array(
+    updates.map(function (update, index) {
+      return {
+        seq: index + 1,
+        doc: update
+      }
     })
+  )
+  .pipe(follower)
+  callback(follower, function () {
+    test.end()
   })
 }
