@@ -167,6 +167,9 @@ pump(
   .on('versions', function (versions) {
     log.debug({versions: versions})
   })
+  .on('skipped', function (skipped) {
+    log.info(skipped, 'skipped')
+  })
   .on('updated', function (update) {
     log.debug({
       dependent: update.dependent,

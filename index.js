@@ -117,6 +117,17 @@ prototype._write = function (chunk, encoding, callback) {
     prune(versions[key], ['dependencies'])
   })
 
+  // Skip enormous updates.
+  var versionCount = Object.keys(versions).length
+  if (versionCount > 200) {
+    self.emit('skipped', {
+      name: updatedName,
+      sequence: sequence,
+      versions: versionCount
+    })
+    return callback()
+  }
+
   function finish () {
     self._sequence = sequence
     self.emit('sequence', sequence)
@@ -457,6 +468,17 @@ prototype._updateVersion = function (sequence, version, callback) {
   var ranges = version.ranges
   var self = this
   var packed = packInteger(sequence)
+
+  // Skip packages with too many dependencies.
+  var dependencyCount = Object.keys(ranges).length
+  if (dependencyCount > 45) {
+    self.emit('skipped', {
+      name: updatedName,
+      sequence: sequence,
+      dependencies: dependencyCount
+    })
+    return callback()
+  }
 
   // Compute the flat package dependency manifest for the new package.
   self._treeFor(
