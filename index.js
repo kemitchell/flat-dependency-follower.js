@@ -574,38 +574,38 @@ prototype._batch = function (batch, callback) {
   var self = this
   asyncEachSeries(batch, function (instruction, done) {
     var file = self._path(instruction.path)
-    var directory = path.dirname(file)
-    mkdirp(directory, ecb(done, function () {
-      if (instruction.link) {
-        var target = self._path(instruction.link)
-        link(target, file, done)
-      } else {
+    if (instruction.existingPath) {
+      link(self._path(instruction.existingPath), file, done)
+    } else {
+      mkdirp(path.dirname(file), ecb(done, function () {
         var value = JSON.stringify(instruction.value)
         if (instruction.append) {
           fs.appendFile(file, value + '\n', done)
         } else {
           fs.writeFile(file, JSON.stringify(instruction.value), done)
         }
-      }
-    }))
+      }))
+    }
   }, callback)
 }
 
-function link (source, destination, callback) {
-  fs.link(source, destination, function (error) {
-    /* istanbul ignore if */
-    if (error) {
-      if (error.code === 'EEXIST') {
-        fs.unlink(source, ecb(error, function () {
-          link(source, destination, callback)
-        }))
+function link (existingPath, newPath, callback) {
+  mkdirp(path.dirname(newPath), ecb(callback, function () {
+    fs.link(existingPath, newPath, function (error) {
+      /* istanbul ignore if */
+      if (error) {
+        if (error.code === 'EEXIST') {
+          fs.unlink(newPath, ecb(error, function () {
+            link(existingPath, newPath, callback)
+          }))
+        } else {
+          callback(error)
+        }
       } else {
-        callback(error)
+        callback()
       }
-    } else {
-      callback()
-    }
-  })
+    })
+  }))
 }
 
 prototype._updateDependent = function (
@@ -805,7 +805,7 @@ function pushTreeRecords (batch, name, version, tree, packed) {
   })
   batch.push({
     path: path.join(LINK_PREFIX, name + '@' + version, packed),
-    link: path.join(TREE_PREFIX, name, packed + '@' + version)
+    existingPath: path.join(TREE_PREFIX, name, packed + '@' + version)
   })
 }
 
