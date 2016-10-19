@@ -221,52 +221,52 @@ prototype._maxSatisfying = function (sequence, name, range, callback) {
         maxSatisfying = record
       }
       done()
-    })
-  )
-  .once('finish', function () {
-    // If there isn't a match, yield an informative error with
-    // structured data about the failed query.
-    if (maxSatisfying === null) {
-      callback({
-        noSatisfying: true,
-        dependency: {
-          name: name,
-          range: range
-        }
-      })
-    // Have a tree for a package version that satisfied the range.
-    } else {
-      // Create a new tree with just a record for the top-level package.
-      // The new records links to all direct dependencies in the tree.
-      var treeWithDependency = [
-        {
-          name: name,
-          version: maxSatisfying.version,
-          range: range,
-          // Link to all direct dependencies.
-          links: maxSatisfying.tree
-            .reduce(function (links, dependency) {
-              return dependency.range
-              ? links.concat({
-                name: dependency.name,
-                version: dependency.version,
-                range: dependency.range
-              })
-              : links
-            }, [])
-        }
-      ]
+    }),
+    function () {
+      // If there isn't a match, yield an informative error with
+      // structured data about the failed query.
+      if (maxSatisfying === null) {
+        callback({
+          noSatisfying: true,
+          dependency: {
+            name: name,
+            range: range
+          }
+        })
+      // Have a tree for a package version that satisfied the range.
+      } else {
+        // Create a new tree with just the top-level package.
+        // The new records links to all direct dependencies in the tree.
+        var treeWithDependency = [
+          {
+            name: name,
+            version: maxSatisfying.version,
+            range: range,
+            // Link to all direct dependencies.
+            links: maxSatisfying.tree
+              .reduce(function (links, dependency) {
+                return dependency.range
+                  ? links.concat({
+                    name: dependency.name,
+                    version: dependency.version,
+                    range: dependency.range
+                  })
+                  : links
+              }, [])
+          }
+        ]
 
-      // Demote direct dependencies to indirect dependencies.
-      maxSatisfying.tree.forEach(function (dependency) {
-        delete dependency.range
-      })
+        // Demote direct dependencies to indirect dependencies.
+        maxSatisfying.tree.forEach(function (dependency) {
+          delete dependency.range
+        })
 
-      mergeFlatTrees(maxSatisfying.tree, treeWithDependency)
-      sortFlatTree(maxSatisfying.tree)
-      callback(null, maxSatisfying.tree)
+        mergeFlatTrees(maxSatisfying.tree, treeWithDependency)
+        sortFlatTree(maxSatisfying.tree)
+        callback(null, maxSatisfying.tree)
+      }
     }
-  })
+  )
 }
 
 // Find all stored trees for a package at or before a given sequence.
@@ -515,15 +515,14 @@ prototype._updateDependent = function (
       treeClone.push({
         name: updatedName,
         version: updatedVersion,
-        links: treeClone
-        .reduce(function (links, dependency) {
+        links: treeClone.reduce(function (links, dependency) {
           return dependency.range
-          ? links.concat({
-            name: dependency.name,
-            version: dependency.version,
-            range: dependency.range
-          })
-          : links
+            ? links.concat({
+              name: dependency.name,
+              version: dependency.version,
+              range: dependency.range
+            })
+            : links
         }, [])
       })
 
@@ -667,23 +666,23 @@ function pushTreeRecords (batch, name, version, tree, sequence) {
 function changedVersions (oldUpdate, newUpdate) {
   // Turn the {$version: $object} map into an array.
   return Object.keys(newUpdate.versions)
-  .map(function propertyToArrayElement (updatedVersion) {
-    return {
-      updatedVersion: updatedVersion,
-      ranges: newUpdate.versions[updatedVersion].dependencies || {},
-      updatedName: newUpdate.name
-    }
-  })
-  // Filter out versions that haven't changed since the last
-  // update for this package.
-  .filter(function sameAsLastUpdate (newUpdate) {
-    return !oldUpdate.some(function (priorUpdate) {
-      return (
-        priorUpdate.updatedVersion === newUpdate.updatedVersion &&
-        deepEqual(priorUpdate.ranges, newUpdate.ranges)
-      )
+    .map(function propertyToArrayElement (updatedVersion) {
+      return {
+        updatedVersion: updatedVersion,
+        ranges: newUpdate.versions[updatedVersion].dependencies || {},
+        updatedName: newUpdate.name
+      }
     })
-  })
+    // Filter out versions that haven't changed since the last
+    // update for this package.
+    .filter(function sameAsLastUpdate (newUpdate) {
+      return !oldUpdate.some(function (priorUpdate) {
+        return (
+          priorUpdate.updatedVersion === newUpdate.updatedVersion &&
+          deepEqual(priorUpdate.ranges, newUpdate.ranges)
+        )
+      })
+    })
 }
 
 function prune (object, keysToKeep) {
