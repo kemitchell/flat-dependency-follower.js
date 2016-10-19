@@ -100,7 +100,11 @@ prototype._write = function (chunk, encoding, callback) {
   function finish () {
     self._sequence = sequence
     self.emit('sequence', sequence)
-    fs.writeFile(self._path('sequence'), sequence.toString(), callback)
+    fs.writeFile(
+      self._path(['sequence']),
+      sequence.toString(),
+      callback
+    )
   }
 
   runWaterfall(
@@ -272,16 +276,15 @@ prototype._maxSatisfying = function (sequence, name, range, callback) {
 // Find all stored trees for a package at or before a given sequence.
 prototype._createTreeStream = function (sequence, name) {
   return filteredNDJSONStream(
-    this._path(TREE_PREFIX, name),
+    this._path([TREE_PREFIX, name]),
     function (chunk) {
       return chunk.sequence <= sequence
     }
   )
 }
 
-prototype._path = function (/* variadic */) {
-  var args = Array.prototype.slice.call(arguments)
-  return path.join.apply(path, [this._directory].concat(args))
+prototype._path = function (components) {
+  return path.join.apply(path, [this._directory].concat(components))
 }
 
 // Use key-only index records to find all direct and indirect dependents
@@ -289,7 +292,7 @@ prototype._path = function (/* variadic */) {
 // sequence number.
 prototype._createDependentsStream = function (sequence, name, version) {
   return filteredNDJSONStream(
-    this._path(DEPENDENCY_PREFIX, name),
+    this._path([DEPENDENCY_PREFIX, name]),
     function (chunk) {
       return (
         semver.satisfies(version, chunk.range) &&
@@ -322,7 +325,7 @@ function filteredNDJSONStream (path, predicate) {
 }
 
 prototype._getLastUpdate = function (name, callback) {
-  var path = this._path(UPDATE_PREFIX, name)
+  var path = this._path([UPDATE_PREFIX, name])
   fs.readFile(path, function (error, buffer) {
     if (error) {
       /* istanbul ignore else */
@@ -346,7 +349,7 @@ prototype._putUpdate = function (chunk, callback) {
       ranges: chunk.versions[version].dependencies
     }
   })
-  var file = this._path(UPDATE_PREFIX, chunk.name)
+  var file = this._path([UPDATE_PREFIX, chunk.name])
   mkdirp(path.dirname(file), ecb(callback, function () {
     fs.writeFile(file, JSON.stringify(value), function (error) {
       callback(error)
@@ -439,10 +442,7 @@ prototype._updateVersion = function (sequence, version, callback) {
           range = semver.validRange(range)
           if (range !== null) {
             updatedBatch.push({
-              path: path.join(
-                DEPENDENCY_PREFIX,
-                dependencyName
-              ),
+              path: [DEPENDENCY_PREFIX, dependencyName],
               value: {
                 sequence: sequence,
                 range: range,
@@ -592,7 +592,7 @@ prototype.query = function (name, version, sequence, callback) {
 
 // Get all currently know versions of a package, by name.
 prototype.versions = function (name, callback) {
-  var path = this._path(UPDATE_PREFIX, name)
+  var path = this._path([UPDATE_PREFIX, name])
   fs.readFile(path, function (error, buffer) {
     if (error) {
       /* istanbul ignore else */
@@ -615,7 +615,7 @@ prototype.versions = function (name, callback) {
 // Get all currently known package names.
 prototype.packages = function (name) {
   var files = null
-  var directory = this._path(UPDATE_PREFIX)
+  var directory = this._path([UPDATE_PREFIX])
   return from2.obj(function source (_, next) {
     if (files === null) {
       fs.readdir(directory, ecb(next, function (read) {
@@ -654,7 +654,7 @@ function validVersions (argument) {
 
 function pushTreeRecords (batch, name, version, tree, sequence) {
   batch.push({
-    path: path.join(TREE_PREFIX, name),
+    path: [TREE_PREFIX, name],
     value: {
       version: version,
       sequence: sequence,
