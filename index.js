@@ -2,6 +2,7 @@ var Writable = require('stream').Writable
 var asyncEach = require('async.each')
 var asyncEachSeries = require('async-each-series')
 var asyncMap = require('async.map')
+var concat = require('concat-stream')
 var deepEqual = require('deep-equal')
 var ecb = require('ecb')
 var endOfStream = require('end-of-stream')
@@ -121,7 +122,9 @@ prototype._write = function (chunk, encoding, callback) {
   function finish () {
     self._sequence = sequence
     self.emit('sequence', sequence)
-    fs.writeFile(self._path('sequence'), sequence.toString(), callback)
+    self._store
+      .createWriteStream(self._path('sequence'))
+      .end(sequence.toString(), callback)
   }
 
   runWaterfall(
@@ -330,15 +333,18 @@ prototype._createTreeStream = function (sequence, name) {
     } else {
       var match = matches.shift()
       if (match) {
-        fs.readFile(match.file, ecb(next, function (read) {
-          parseJSON(read, ecb(next, function (object) {
-            next(null, {
-              version: match.version,
-              sequence: match.sequence,
-              tree: object
-            })
-          }))
-        }))
+        pump(
+          self._store.createReadStream(match.file),
+          concat(function (buffer) {
+            parseJSON(buffer, ecb(next, function (object) {
+              next(null, {
+                version: match.version,
+                sequence: match.sequence,
+                tree: object
+              })
+            }))
+          })
+        )
       } else {
         next(null, null)
       }
@@ -354,7 +360,8 @@ prototype._path = function (/* variadic */) {
 // on a specific version of a specific package at or before a given
 // sequence number.
 prototype._createDependentsStream = function (sequence, name, version) {
-  var directory = this._path(DEPENDENCY_PREFIX, name)
+  var self = this
+  var directory = self._path(DEPENDENCY_PREFIX, name)
   var lists = null
   return multistream.obj(function factory (callback) {
     if (lists === null) {
@@ -366,9 +373,10 @@ prototype._createDependentsStream = function (sequence, name, version) {
       if (list) {
         callback(
           null,
-          fs.createReadStream(list.file)
-            .pipe(ndjson.parse())
-            .pipe(through2.obj(function (chunk, _, next) {
+          pump(
+            self._store.createReadStream(list.file),
+            ndjson.parse(),
+            through2.obj(function (chunk, _, next) {
               if (semver.satisfies(version, chunk.range)) {
                 next(null, {
                   sequence: list.sequence,
@@ -381,7 +389,8 @@ prototype._createDependentsStream = function (sequence, name, version) {
               } else {
                 next()
               }
-            }))
+            })
+          )
         )
       } else {
         callback(null, null)
@@ -419,36 +428,40 @@ prototype._createDependentsStream = function (sequence, name, version) {
 }
 
 prototype._getLastUpdate = function (name, callback) {
-  var path = this._path(UPDATE_PREFIX, name)
-  fs.readFile(path, function (error, buffer) {
-    if (error) {
-      /* istanbul ignore else */
-      if (error.code === 'ENOENT') {
-        callback(null, [])
-      } else {
-        callback(error)
-      }
+  var self = this
+  var path = self._path(UPDATE_PREFIX, name)
+  self._store.exists(path, ecb(callback, function (exists) {
+    if (exists === false) {
+      callback(null, [])
     } else {
-      parseJSON(buffer, ecb(callback, function (object) {
-        callback(null, object)
-      }))
+      pump(
+        self._store.createReadStream(path),
+        concat(function (buffer) {
+          parseJSON(buffer, ecb(callback, function (object) {
+            callback(null, object)
+          }))
+        }),
+        function (error) {
+          if (error) {
+            callback(error)
+          }
+        }
+      )
     }
-  })
+  }))
 }
 
 prototype._putUpdate = function (chunk, callback) {
+  var self = this
   var value = Object.keys(chunk.versions).map(function (version) {
     return {
       updatedVersion: version,
       ranges: chunk.versions[version].dependencies
     }
   })
-  var file = this._path(UPDATE_PREFIX, chunk.name)
-  mkdirp(path.dirname(file), ecb(callback, function () {
-    fs.writeFile(file, JSON.stringify(value), function (error) {
-      callback(error)
-    })
-  }))
+  self._store
+    .createWriteStream(this._path(UPDATE_PREFIX, chunk.name))
+    .end(JSON.stringify(value), callback)
 }
 
 prototype._updateVersion = function (sequence, version, callback) {

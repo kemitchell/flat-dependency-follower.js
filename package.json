@@ -10,6 +10,7 @@
     "async.map": "^0.5.2",
     "aws-sdk": "^2.6.9",
     "changes-stream": "^2.1.0",
+    "concat-stream": "^1.5.2",
     "deep-equal": "^1.0.1",
     "ecb": "^1.0.0",
     "end-of-stream": "^1.1.0",
