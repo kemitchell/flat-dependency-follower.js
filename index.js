@@ -9,7 +9,6 @@ var fs = require('fs')
 var inherits = require('util').inherits
 var mergeFlatTrees = require('merge-flat-package-trees')
 var mkdirp = require('mkdirp')
-var ndjson = require('ndjson')
 var normalize = require('normalize-registry-metadata')
 var parseJSON = require('json-parse-errback')
 var path = require('path')
@@ -17,6 +16,7 @@ var pump = require('pump')
 var runWaterfall = require('run-waterfall')
 var semver = require('semver')
 var sortFlatTree = require('sort-flat-package-tree')
+var split2 = require('split2')
 var through2 = require('through2')
 var to = require('flush-write-stream')
 var updateFlatTree = require('update-flat-package-tree')
@@ -318,7 +318,7 @@ function filteredNDJSONStream (path, predicate) {
         returned.emit(error)
       }
     })
-  return pump(source, ndjson.parse(), returned)
+  return pump(source, parser(), returned)
 }
 
 prototype._getLastUpdate = function (name, callback) {
@@ -695,4 +695,16 @@ function prune (object, keysToKeep) {
       delete object[key]
     }
   }
+}
+
+function parser () {
+  return split2(function (line) {
+    try {
+      if (line) {
+        return JSON.parse(line)
+      }
+    } catch (error) {
+      // Pass.
+    }
+  }, {highWaterMark: 4})
 }
