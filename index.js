@@ -421,7 +421,7 @@ prototype._updateVersion = function (sequence, version, callback) {
         var withRanges = []
 
         // Direct dependency range.
-        if (dependencyName in ranges) {
+        if (dependencyName.length !== 0 && dependencyName in ranges) {
           withRanges.push(ranges[dependencyName])
         }
 
