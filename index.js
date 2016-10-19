@@ -442,7 +442,10 @@ prototype._updateVersion = function (sequence, version, callback) {
           range = semver.validRange(range)
           if (range !== null) {
             updatedBatch.push({
-              path: [DEPENDENCY_PREFIX, dependencyName],
+              path: [
+                DEPENDENCY_PREFIX,
+                encodeURIComponent(dependencyName)
+              ],
               value: {
                 sequence: sequence,
                 range: range,
@@ -625,7 +628,7 @@ prototype.packages = function (name) {
     } else {
       var file = files.shift()
       if (file) {
-        next(null, path.parse(file).name)
+        next(null, decodeURIComponent(path.parse(file).name))
       } else {
         next(null, null)
       }
@@ -654,7 +657,7 @@ function validVersions (argument) {
 
 function pushTreeRecords (batch, name, version, tree, sequence) {
   batch.push({
-    path: [TREE_PREFIX, name],
+    path: [TREE_PREFIX, encodeURIComponent(name)],
     value: {
       version: version,
       sequence: sequence,
