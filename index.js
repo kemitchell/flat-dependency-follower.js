@@ -102,7 +102,7 @@ prototype._write = function (chunk, encoding, callback) {
     self.emit('sequence', sequence)
     fs.writeFile(
       self._path(['sequence']),
-      sequence.toString(),
+      sequence.toString() + '\n',
       callback
     )
   }
