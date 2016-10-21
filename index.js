@@ -276,7 +276,7 @@ prototype._maxSatisfying = function (sequence, name, range, callback) {
 // Find all stored trees for a package at or before a given sequence.
 prototype._createTreeStream = function (sequence, name) {
   return filteredNDJSONStream(
-    this._path([TREE_PREFIX, name]),
+    this._path([TREE_PREFIX, encodeURIComponent(name)]),
     function (chunk) {
       return chunk.sequence <= sequence
     }
@@ -292,7 +292,7 @@ prototype._path = function (components) {
 // sequence number.
 prototype._createDependentsStream = function (sequence, name, version) {
   return filteredNDJSONStream(
-    this._path([DEPENDENCY_PREFIX, name]),
+    this._path([DEPENDENCY_PREFIX, encodeURIComponent(name)]),
     function (chunk) {
       return (
         semver.satisfies(version, chunk.range) &&
@@ -325,7 +325,7 @@ function filteredNDJSONStream (path, predicate) {
 }
 
 prototype._getLastUpdate = function (name, callback) {
-  var path = this._path([UPDATE_PREFIX, name])
+  var path = this._path([UPDATE_PREFIX, encodeURIComponent(name)])
   fs.readFile(path, function (error, buffer) {
     if (error) {
       /* istanbul ignore else */
@@ -349,7 +349,7 @@ prototype._putUpdate = function (chunk, callback) {
       ranges: chunk.versions[version].dependencies
     }
   })
-  var file = this._path([UPDATE_PREFIX, chunk.name])
+  var file = this._path([UPDATE_PREFIX, encodeURIComponent(chunk.name)])
   mkdirp(path.dirname(file), ecb(callback, function () {
     fs.writeFile(file, JSON.stringify(value), function (error) {
       callback(error)
@@ -595,7 +595,7 @@ prototype.query = function (name, version, sequence, callback) {
 
 // Get all currently know versions of a package, by name.
 prototype.versions = function (name, callback) {
-  var path = this._path([UPDATE_PREFIX, name])
+  var path = this._path([UPDATE_PREFIX, encodeURIComponent(name)])
   fs.readFile(path, function (error, buffer) {
     if (error) {
       /* istanbul ignore else */
