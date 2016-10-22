@@ -1,28 +1,36 @@
-var asyncMap = require('async.map')
-var deepEqual = require('deep-equal')
-var dirname = require('path').dirname
-var each = require('async.each')
-var eachSeries = require('async-each-series')
-var ecb = require('ecb')
-var fs = require('fs')
-var join = require('path').join
+// Flat Dependency Trees
 var mergeFlatTrees = require('merge-flat-package-trees')
-var mkdirp = require('mkdirp')
-var parseJSON = require('json-parse-errback')
-var runWaterfall = require('run-waterfall')
-var semver = require('semver')
 var sortFlatTree = require('sort-flat-package-tree')
 var updateFlatTree = require('update-flat-package-tree')
+var semver = require('semver')
 
+// Streams
+var decodeUTF8 = require('pull-utf8-decoder')
 var filter = require('pull-stream').filter
 var map = require('pull-stream').map
 var pull = require('pull-stream')
 var readFile = require('pull-file')
-var reduce = require('pull-stream/sinks/reduce')
-var registry = require('registry-pull-stream')
+var reduce = require('pull-stream').reduce
 var split = require('pull-split')
 
+// Control Flow
+var asyncMap = require('async.map')
+var each = require('async.each')
+var eachSeries = require('async-each-series')
+var ecb = require('ecb')
+var parseJSON = require('json-parse-errback')
+var runWaterfall = require('run-waterfall')
+
+// Miscellany
+var deepEqual = require('deep-equal')
+var dirname = require('path').dirname
+var fs = require('fs')
+var join = require('path').join
+var mkdirp = require('mkdirp')
+var parse = require('path').parse
+
 var encode = encodeURIComponent
+var decode = decodeURIComponent
 
 // A Note on Terminology
 //
@@ -42,33 +50,40 @@ var encode = encodeURIComponent
 //
 // - A "version" is a node-semver version or URL.
 
+exports.packages = packages
+exports.query = query
+exports.sequence = sequence
+exports.sink = sink
+exports.versions = versions
+
 var DEPENDENCY = 'dependencies'
+var SEQUENCE = 'sequence'
 var TREE = 'trees'
 var UPDATE = 'updates'
 
-module.exports = function (directory, options) {
+function sink (directory, callback) {
   return pull(
-    registry(options),
     filter(isPackageUpdate),
     map(pruneUpdate),
     function writeToDirectory (source) {
-      source(null, function next (end, data) {
-        if (end === true) {
-          throw new Error('Registry stream ended.')
-        } else if (end) {
-          throw end
+      source(null, next)
+      function next (end, data) {
+        if (end === true && callback) {
+          callback()
+        } else if (end && callback) {
+          callback(end)
         } else {
-          write(data, directory, function (error) {
+          write(directory, data, function (error) {
             if (error) {
               source(true, function () {
-                throw error
+                callback(error)
               })
             } else {
               source(null, next)
             }
           })
         }
-      })
+      }
     }
   )
 }
@@ -95,9 +110,7 @@ function pruneUpdate (update) {
   return doc
 }
 
-// TODO write ./sequence
-
-function write (update, directory, done) {
+function write (directory, update, callback) {
   runWaterfall([
     // Read the last saved update, which we will compare with the
     // current update to identify changed versions.
@@ -119,14 +132,14 @@ function write (update, directory, done) {
     },
 
     // Overwrite the sequence number file.
-    ecb(done, function finish () {
+    function (done) {
       fs.writeFile(
-        join(directory, 'sequence'),
+        join(directory, SEQUENCE),
         update.sequence.toString() + '\n',
         done
       )
-    })
-  ])
+    }
+  ], callback)
 }
 
 // Find the tree for the highest package version that satisfies a given
@@ -218,10 +231,28 @@ function createDependentsStream (directory, sequence, name, version) {
 function filteredNDJSONStream (path, predicate) {
   return pull(
     readFile(path),
-    split(),
+    decodeUTF8(),
+    split(
+      '\n',
+      false, // Do not map.
+      false, // Do not reverse.
+      true // Skip the last.
+    ),
     map(JSON.parse),
-    filter(predicate)
+    filter(predicate),
+    suppressENOENT
   )
+}
+
+function suppressENOENT (source) {
+  return function sink (end, callback) {
+    source(end, function (end, data) {
+      if (end && end !== true && end.code === 'ENOENT') {
+        end = true
+      }
+      callback(end, data)
+    })
+  }
 }
 
 function getLastUpdate (directory, name, callback) {
@@ -301,10 +332,7 @@ function updateVersion (directory, sequence, version, callback) {
           range = semver.validRange(range)
           if (range !== null) {
             updatedBatch.push({
-              path: [
-                DEPENDENCY,
-                encode(dependencyName)
-              ],
+              path: join(DEPENDENCY, encode(dependencyName)),
               value: {
                 sequence: sequence,
                 range: range,
@@ -318,39 +346,34 @@ function updateVersion (directory, sequence, version, callback) {
         })
       })
 
-      batch(
-        directory,
-        updatedBatch,
-        ecb(callback, function () {
-          updatedBatch = null
-          // Update trees for packages that directly and indirectly
-          // depend on the updated package.
-          pull(
-            createDependentsStream(
-              directory, sequence, updatedName, updatedVersion
-            ),
-            function sink (source) {
-              source(null, function next (end, dependent) {
-                if (end === true) {
-                  callback()
-                } else if (end) {
-                  source(end, function () {
-                    callback(end)
+      writeBatch(directory, updatedBatch, ecb(callback, function () {
+        // Update trees for packages that directly and indirectly
+        // depend on the updated package.
+        pull(
+          createDependentsStream(
+            directory, sequence, updatedName, updatedVersion
+          ),
+          function sink (source) {
+            source(null, function next (end, dependent) {
+              if (end === true) {
+                callback()
+              } else if (end) {
+                source(end, function () {
+                  callback(end)
+                })
+              } else {
+                updateDependent(
+                  directory, sequence, updatedName, updatedVersion,
+                  tree, dependent,
+                  ecb(callback, function () {
+                    source(null, next)
                   })
-                } else {
-                  updateDependent(
-                    directory, sequence, updatedName, updatedVersion,
-                    tree, dependent,
-                    ecb(callback, function () {
-                      source(null, next)
-                    })
-                  )
-                }
-              })
-            }
-          )
-        })
-      )
+                )
+              }
+            })
+          }
+        )
+      }))
     })
   )
 }
@@ -425,7 +448,7 @@ function treeFor (
   )
 }
 
-function batch (directory, batch, callback) {
+function writeBatch (directory, batch, callback) {
   eachSeries(batch, function (instruction, done) {
     // TODO check array arg
     var file = join(directory, instruction.path)
@@ -446,7 +469,7 @@ function updateDependent (
 
   // Find the most current tree for the package.
   query(
-    name, version, sequence,
+    directory, name, version, sequence,
     ecb(callback, function (result) {
       // Create a tree with:
       //
@@ -486,7 +509,7 @@ function updateDependent (
 
       var batch = []
       pushTreeRecords(batch, name, version, result, sequence)
-      batch(directory, batch, callback)
+      writeBatch(directory, batch, callback)
     })
   )
 }
@@ -510,7 +533,63 @@ function query (directory, name, version, sequence, callback) {
 }
 
 function laterUpdate (a, b) {
-  return (a === null || a.sequence > b.sequence) ? a : b
+  return (a === null || a.sequence < b.sequence) ? b : a
+}
+
+// Get all currently know versions of a package, by name.
+function versions (directory, name, callback) {
+  var path = join(directory, UPDATE, encode(name))
+  fs.readFile(path, function (error, buffer) {
+    console.log(arguments)
+    if (error) {
+      /* istanbul ignore else */
+      if (error.code === 'ENOENT') {
+        callback(null, null)
+      } else {
+        callback(error)
+      }
+    } else {
+      parseJSON(buffer, ecb(callback, function (record) {
+        var versions = record.map(function (element) {
+          return element.updatedVersion
+        })
+        callback(null, versions)
+      }))
+    }
+  })
+}
+
+// Get all currently known package names.
+function packages (directory, name) {
+  directory = join(directory, UPDATE)
+  var files
+  return function source (end, callback) {
+    if (files === undefined) {
+      fs.readdir(directory, function (error, read) {
+        if (error) {
+          callback(error)
+        } else {
+          files = read
+          source(end, callback)
+        }
+      })
+    } else {
+      var file = files.shift()
+      if (file) {
+        callback(null, decode(parse(file).name))
+      } else {
+        callback(null, null)
+      }
+    }
+  }
+}
+
+// Get the last-processed sequence number.
+function sequence (directory, callback) {
+  var file = join(directory, SEQUENCE)
+  fs.readFile(file, ecb(callback, function (buffer) {
+    callback(null, parseInt(buffer.toString()))
+  }))
 }
 
 // Helper Functions
@@ -524,21 +603,25 @@ function validName (argument) {
 }
 
 function validVersions (argument) {
-  return (
-    typeof argument === 'object' &&
-    Object.keys(argument).every(function (key) {
-      return !isEmptyString(key) && !isEmptyString(argument[key])
-    })
-  )
+  return Object.keys(argument).every(function (version) {
+    var value = argument[version]
+    return (
+      !isEmptyString(version) &&
+      value.dependencies &&
+      Object.keys(value.dependencies).every(function (dep) {
+        return !isEmptyString(value.dependencies[dep])
+      })
+    )
+  })
 }
 
 function isEmptyString (argument) {
-  return typeof argument === 'string' && argument.length !== 0
+  return typeof argument === 'string' && argument.length === 0
 }
 
 function pushTreeRecords (batch, name, version, tree, sequence) {
   batch.push({
-    path: [TREE, encode(name)],
+    path: join(TREE, encode(name)),
     value: {
       version: version,
       sequence: sequence,
