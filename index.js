@@ -540,7 +540,6 @@ function laterUpdate (a, b) {
 function versions (directory, name, callback) {
   var path = join(directory, UPDATE, encode(name))
   fs.readFile(path, function (error, buffer) {
-    console.log(arguments)
     if (error) {
       /* istanbul ignore else */
       if (error.code === 'ENOENT') {
@@ -578,7 +577,7 @@ function packages (directory, name) {
       if (file) {
         callback(null, decode(parse(file).name))
       } else {
-        callback(null, null)
+        callback(true)
       }
     }
   }
@@ -607,10 +606,12 @@ function validVersions (argument) {
     var value = argument[version]
     return (
       !isEmptyString(version) &&
-      value.dependencies &&
-      Object.keys(value.dependencies).every(function (dep) {
-        return !isEmptyString(value.dependencies[dep])
-      })
+      (
+        !value.hasOwnProperty('dependencies') ||
+        Object.keys(value.dependencies).every(function (dep) {
+          return !isEmptyString(value.dependencies[dep])
+        })
+      )
     )
   })
 }
