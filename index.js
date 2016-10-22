@@ -1,27 +1,28 @@
-var Writable = require('stream').Writable
-var asyncEach = require('async.each')
-var asyncEachSeries = require('async-each-series')
 var asyncMap = require('async.map')
 var deepEqual = require('deep-equal')
+var dirname = require('path').dirname
+var each = require('async.each')
+var eachSeries = require('async-each-series')
 var ecb = require('ecb')
-var from2 = require('from2')
 var fs = require('fs')
-var inherits = require('util').inherits
+var join = require('path').join
 var mergeFlatTrees = require('merge-flat-package-trees')
 var mkdirp = require('mkdirp')
-var normalize = require('normalize-registry-metadata')
 var parseJSON = require('json-parse-errback')
-var path = require('path')
-var pump = require('pump')
 var runWaterfall = require('run-waterfall')
 var semver = require('semver')
 var sortFlatTree = require('sort-flat-package-tree')
-var split2 = require('split2')
-var through2 = require('through2')
-var to = require('flush-write-stream')
 var updateFlatTree = require('update-flat-package-tree')
 
-module.exports = FlatDependencyFollower
+var filter = require('pull-stream').filter
+var map = require('pull-stream').map
+var pull = require('pull-stream')
+var readFile = require('pull-file')
+var reduce = require('pull-stream/sinks/reduce')
+var registry = require('registry-pull-stream')
+var split = require('pull-split')
+
+var encode = encodeURIComponent
 
 // A Note on Terminology
 //
@@ -41,195 +42,102 @@ module.exports = FlatDependencyFollower
 //
 // - A "version" is a node-semver version or URL.
 
-var UPDATE_PREFIX = 'last_updates'
-var TREE_PREFIX = 'trees'
-var DEPENDENCY_PREFIX = 'dependencies'
+var DEPENDENCY = 'dependencies'
+var TREE = 'trees'
+var UPDATE = 'updates'
 
-function FlatDependencyFollower (directory) {
-  if (!(this instanceof FlatDependencyFollower)) {
-    return new FlatDependencyFollower(directory)
-  }
-  this._directory = directory
-  this._sequence = 0
-  Writable.call(this, {
-    objectMode: true,
-    // Some of the documents in the registry are over 5MB.  Default,
-    // 16-object stream buffers can fill available memory quickly, so
-    // reduce to 2.
-    highWaterMark: 2
-  })
-}
-
-inherits(FlatDependencyFollower, Writable)
-
-var prototype = FlatDependencyFollower.prototype
-
-prototype._write = function (chunk, encoding, callback) {
-  var self = this
-  var sequence = chunk.seq
-  chunk = chunk.doc
-
-  if (!validName(chunk.name) || !validVersions(chunk.versions)) {
-    self._sequence = sequence
-    self.emit('sequence', sequence)
-    return callback()
-  }
-
-  normalize(chunk)
-  var updatedName = chunk.name
-  self.emit('updating', updatedName)
-
-  // Delete properties we don't need in memory.
-  prune(chunk, ['name', 'versions'])
-  var versions = chunk.versions
-  Object.keys(versions).forEach(function (key) {
-    prune(versions[key], ['dependencies'])
-  })
-
-  // Skip enormous updates.
-  var versionCount = Object.keys(versions).length
-  if (versionCount > 200) {
-    self.emit('skipped', {
-      name: updatedName,
-      sequence: sequence,
-      versions: versionCount
-    })
-    return callback()
-  }
-
-  function finish () {
-    self._sequence = sequence
-    self.emit('sequence', sequence)
-    fs.writeFile(
-      self._path(['sequence']),
-      sequence.toString() + '\n',
-      callback
-    )
-  }
-
-  runWaterfall(
-    [
-      // Read the last saved update, which we will compare with the
-      // current update to identify changed versions.
-      function (done) {
-        self._getLastUpdate(updatedName, done)
-      },
-
-      // Identify new and changed versions and process them.
-      function (lastUpdate, done) {
-        var versions = changedVersions(lastUpdate, chunk)
-        lastUpdate = null
-        self.emit('versions', versions)
-        asyncEach(versions, function (version, done) {
-          self._updateVersion(sequence, version, done)
-        }, done)
-      },
-
-      // Overwrite the update record for this package, so we can compare
-      // it to the next update for this package later.
-      function (done) {
-        self._putUpdate(chunk, done)
-      }
-    ],
-    ecb(callback, finish)
+module.exports = function (directory, options) {
+  return pull(
+    registry(options),
+    filter(isPackageUpdate),
+    map(pruneUpdate),
+    function writeToDirectory (source) {
+      source(null, function next (end, data) {
+        if (end === true) {
+          throw new Error('Registry stream ended.')
+        } else if (end) {
+          throw end
+        } else {
+          write(data, directory, function (error) {
+            if (error) {
+              source(true, function () {
+                throw error
+              })
+            } else {
+              source(null, next)
+            }
+          })
+        }
+      })
+    }
   )
 }
 
-// Generate a tree for a package, based on the `.dependencies` object in
-// its `package.json`.
-prototype._treeFor = function (
-  sequence, name, version, ranges, callback
-) {
-  var self = this
+function isPackageUpdate (update) {
+  return (
+    update.doc &&
+    validName(update.doc.name) &&
+    validVersions(update.doc.versions)
+  )
+}
 
-  asyncMap(
-    // Turn the Object mapping from package name to SemVer range into an
-    // Array of Objects with name and range properties.
-    Object.keys(ranges).map(function (dependencyName) {
-      return {
-        name: dependencyName,
-        range: (typeof ranges[dependencyName] === 'string')
-          ? ranges[dependencyName]
-          : 'INVALID'
-      }
-    }),
+function pruneUpdate (update) {
+  delete update.changes
+  var doc = update.doc
+  prune(doc, ['versions', 'name'])
+  var versions = doc.versions
+  if (versions) {
+    Object.keys(versions).forEach(function (version) {
+      prune(versions[version], 'dependencies')
+    })
+  }
+  doc.sequence = update.seq
+  return doc
+}
 
-    // For each name-and-range pair...
-    function (dependency, done) {
-      var range = semver.validRange(dependency.range)
-      if (range === null) {
-        done(null, [
-          {
-            name: dependency.name,
-            version: dependency.range,
-            range: range,
-            links: []
-          }
-        ])
-      } else {
-        // ...find the dependency tree for the highest version that
-        // satisfies the range.
-        self._maxSatisfying(
-          sequence, dependency.name, dependency.range,
-          function (error, result) {
-            if (error) {
-              /* istanbul ignore else */
-              if (error.noSatisfying) {
-                done(null, [
-                  {
-                    name: error.dependency.name,
-                    range: error.dependency.range,
-                    missing: true,
-                    links: []
-                  }
-                ])
-              } else {
-                done(error)
-              }
-            } else {
-              done(null, result)
-            }
-          }
-        )
-      }
+// TODO write ./sequence
+
+function write (update, directory, done) {
+  runWaterfall([
+    // Read the last saved update, which we will compare with the
+    // current update to identify changed versions.
+    function (done) {
+      getLastUpdate(directory, update.name, done)
     },
 
-    // Once we have trees for dependencies...
-    ecb(callback, function (dependencyTrees) {
-      // ...combine them to form a new tree.
-      var combinedTree = []
-      dependencyTrees.forEach(function (tree) {
-        mergeFlatTrees(combinedTree, tree)
-      })
-      sortFlatTree(combinedTree)
-      callback(null, combinedTree)
+    // Identify new and changed versions and process them.
+    function (last, done) {
+      each(changedVersions(last, update), function (version, done) {
+        updateVersion(directory, update.sequence, version, done)
+      }, done)
+    },
+
+    // Overwrite the update record for this package, so we can compare
+    // it to the next update for this package later.
+    function (done) {
+      putUpdate(directory, update, done)
+    },
+
+    // Overwrite the sequence number file.
+    ecb(done, function finish () {
+      fs.writeFile(
+        join(directory, 'sequence'),
+        update.sequence.toString() + '\n',
+        done
+      )
     })
-  )
+  ])
 }
 
 // Find the tree for the highest package version that satisfies a given
 // SemVer range.
-prototype._maxSatisfying = function (sequence, name, range, callback) {
-  var maxSatisfying = null
-  pump(
-    this._createTreeStream(sequence, name),
-    to.obj(function (record, _, done) {
-      var higherSatisfying = (
-        semver.satisfies(record.version, range) &&
-        (
-          maxSatisfying === null ||
-          semver.compare(maxSatisfying.version, record.version) === -1
-        )
-      )
-      if (higherSatisfying) {
-        maxSatisfying = record
-      }
-      done()
-    }),
-    function () {
+function maxSatisfying (directory, sequence, name, range, callback) {
+  pull(
+    treeStream(directory, sequence, name),
+    reduce(higherMatch(range), null, ecb(callback, function (max) {
       // If there isn't a match, yield an informative error with
       // structured data about the failed query.
-      if (maxSatisfying === null) {
+      if (max === null) {
         callback({
           noSatisfying: true,
           dependency: {
@@ -239,15 +147,15 @@ prototype._maxSatisfying = function (sequence, name, range, callback) {
         })
       // Have a tree for a package version that satisfied the range.
       } else {
-        // Create a new tree with just the top-level package.
-        // The new records links to all direct dependencies in the tree.
+        // Create a new tree with just the top-level package. The new
+        // records links to all direct dependencies in the tree.
         var treeWithDependency = [
           {
             name: name,
-            version: maxSatisfying.version,
+            version: max.version,
             range: range,
             // Link to all direct dependencies.
-            links: maxSatisfying.tree
+            links: max.tree
               .reduce(function (links, dependency) {
                 return dependency.range
                   ? links.concat({
@@ -261,38 +169,43 @@ prototype._maxSatisfying = function (sequence, name, range, callback) {
         ]
 
         // Demote direct dependencies to indirect dependencies.
-        maxSatisfying.tree.forEach(function (dependency) {
+        max.tree.forEach(function (dependency) {
           delete dependency.range
         })
 
-        mergeFlatTrees(maxSatisfying.tree, treeWithDependency)
-        sortFlatTree(maxSatisfying.tree)
-        callback(null, maxSatisfying.tree)
+        mergeFlatTrees(max.tree, treeWithDependency)
+        sortFlatTree(max.tree)
+        callback(null, max.tree)
       }
-    }
+    }))
   )
 }
 
+function higherMatch (range) {
+  return function (a, b) {
+    return (
+      semver.satisfies(b.version, range) &&
+      (a === null || semver.compare(a.version, b.version) === -1)
+    ) ? b : a
+  }
+}
+
 // Find all stored trees for a package at or before a given sequence.
-prototype._createTreeStream = function (sequence, name) {
+function treeStream (directory, sequence, name) {
   return filteredNDJSONStream(
-    this._path([TREE_PREFIX, encodeURIComponent(name)]),
+    join(directory, TREE, encode(name)),
     function (chunk) {
       return chunk.sequence <= sequence
     }
   )
 }
 
-prototype._path = function (components) {
-  return path.join.apply(path, [this._directory].concat(components))
-}
-
 // Use key-only index records to find all direct and indirect dependents
 // on a specific version of a specific package at or before a given
 // sequence number.
-prototype._createDependentsStream = function (sequence, name, version) {
+function createDependentsStream (directory, sequence, name, version) {
   return filteredNDJSONStream(
-    this._path([DEPENDENCY_PREFIX, encodeURIComponent(name)]),
+    join(directory, DEPENDENCY, encode(name)),
     function (chunk) {
       return (
         semver.satisfies(version, chunk.range) &&
@@ -303,29 +216,16 @@ prototype._createDependentsStream = function (sequence, name, version) {
 }
 
 function filteredNDJSONStream (path, predicate) {
-  var returned = through2.obj(function (chunk, _, done) {
-    if (predicate(chunk)) {
-      this.push(chunk)
-    }
-    done()
-  })
-  var source = fs
-    .createReadStream(path)
-    .once('error', function (error) {
-      /* istanbul ignore else */
-      if (error.code === 'ENOENT') {
-        // Makes the returned stream an empty stream.
-        returned.end()
-      } else {
-        // Pass the error through.
-        returned.emit(error)
-      }
-    })
-  return pump(source, parser(), returned)
+  return pull(
+    readFile(path),
+    split(),
+    map(JSON.parse),
+    filter(predicate)
+  )
 }
 
-prototype._getLastUpdate = function (name, callback) {
-  var path = this._path([UPDATE_PREFIX, encodeURIComponent(name)])
+function getLastUpdate (directory, name, callback) {
+  var path = join(directory, UPDATE, encode(name))
   fs.readFile(path, function (error, buffer) {
     if (error) {
       /* istanbul ignore else */
@@ -342,69 +242,28 @@ prototype._getLastUpdate = function (name, callback) {
   })
 }
 
-prototype._putUpdate = function (chunk, callback) {
+function putUpdate (directory, chunk, callback) {
   var value = Object.keys(chunk.versions).map(function (version) {
     return {
       updatedVersion: version,
       ranges: chunk.versions[version].dependencies
     }
   })
-  var file = this._path([UPDATE_PREFIX, encodeURIComponent(chunk.name)])
-  mkdirp(path.dirname(file), ecb(callback, function () {
-    fs.writeFile(file, JSON.stringify(value), function (error) {
-      callback(error)
-    })
+  var file = join(directory, UPDATE, encode(chunk.name))
+  mkdirp(dirname(file), ecb(callback, function () {
+    fs.writeFile(file, JSON.stringify(value), callback)
   }))
 }
 
-prototype._updateVersion = function (sequence, version, callback) {
+function updateVersion (directory, sequence, version, callback) {
   var updatedName = version.updatedName
   var updatedVersion = version.updatedVersion
   var ranges = version.ranges
-  var self = this
-
-  // Skip packages with too many dependencies.
-  var dependencyCount = Object.keys(ranges).length
-  if (dependencyCount > 45) {
-    self.emit('skipped', {
-      name: updatedName,
-      sequence: sequence,
-      dependencies: dependencyCount
-    })
-    return callback()
-  }
 
   // Compute the flat package dependency manifest for the new package.
-  self._treeFor(
-    sequence, updatedName, updatedVersion, ranges,
+  treeFor(
+    directory, sequence, updatedName, updatedVersion, ranges,
     ecb(callback, function (tree) {
-      var missingDependencies = tree.filter(function (dependency) {
-        return dependency.hasOwnProperty('missing')
-      })
-      var hasMissingDependencies = missingDependencies.length !== 0
-
-      // We are missing some dependencies for this package.
-      if (hasMissingDependencies) {
-        missingDependencies.forEach(function (dependency) {
-          self.emit('missing', {
-            message: (
-              'no package satisfying ' +
-              dependency.name + '@' + dependency.range + ' for ' +
-              updatedName + '@' + updatedVersion
-            ),
-            sequence: sequence,
-            dependent: {
-              name: updatedName,
-              version: updatedVersion
-            },
-            dependency: {
-              name: dependency.name,
-              range: dependency.range
-            }
-          })
-        })
-      }
-
       var updatedBatch = []
 
       // Store the tree.
@@ -443,8 +302,8 @@ prototype._updateVersion = function (sequence, version, callback) {
           if (range !== null) {
             updatedBatch.push({
               path: [
-                DEPENDENCY_PREFIX,
-                encodeURIComponent(dependencyName)
+                DEPENDENCY,
+                encode(dependencyName)
               ],
               value: {
                 sequence: sequence,
@@ -459,23 +318,36 @@ prototype._updateVersion = function (sequence, version, callback) {
         })
       })
 
-      self._batch(
+      batch(
+        directory,
         updatedBatch,
         ecb(callback, function () {
           updatedBatch = null
           // Update trees for packages that directly and indirectly
           // depend on the updated package.
-          pump(
-            self._createDependentsStream(
-              sequence, updatedName, updatedVersion
+          pull(
+            createDependentsStream(
+              directory, sequence, updatedName, updatedVersion
             ),
-            to.obj(function (dependent, _, done) {
-              self._updateDependent(
-                sequence, updatedName, updatedVersion, tree,
-                dependent, done
-              )
-            }),
-            callback
+            function sink (source) {
+              source(null, function next (end, dependent) {
+                if (end === true) {
+                  callback()
+                } else if (end) {
+                  source(end, function () {
+                    callback(end)
+                  })
+                } else {
+                  updateDependent(
+                    directory, sequence, updatedName, updatedVersion,
+                    tree, dependent,
+                    ecb(callback, function () {
+                      source(null, next)
+                    })
+                  )
+                }
+              })
+            }
           )
         })
       )
@@ -483,27 +355,97 @@ prototype._updateVersion = function (sequence, version, callback) {
   )
 }
 
-prototype._batch = function (batch, callback) {
-  var self = this
-  asyncEachSeries(batch, function (instruction, done) {
-    var file = self._path(instruction.path)
-    mkdirp(path.dirname(file), ecb(done, function () {
+// Generate a tree for a package, based on the `.dependencies` object in
+// its `package.json`.
+function treeFor (
+  directory, sequence, name, version, ranges, callback
+) {
+  asyncMap(
+    // Turn the Object mapping from package name to SemVer range into an
+    // Array of Objects with name and range properties.
+    Object.keys(ranges).map(function (dependencyName) {
+      return {
+        name: dependencyName,
+        range: (typeof ranges[dependencyName] === 'string')
+          ? ranges[dependencyName]
+          : 'INVALID'
+      }
+    }),
+
+    // For each name-and-range pair...
+    function (dependency, done) {
+      var range = semver.validRange(dependency.range)
+      if (range === null) {
+        done(null, [
+          {
+            name: dependency.name,
+            version: dependency.range,
+            range: range,
+            links: []
+          }
+        ])
+      } else {
+        // ...find the dependency tree for the highest version that
+        // satisfies the range.
+        maxSatisfying(
+          directory, sequence, dependency.name, dependency.range,
+          function (error, result) {
+            if (error) {
+              /* istanbul ignore else */
+              if (error.noSatisfying) {
+                done(null, [
+                  {
+                    name: error.dependency.name,
+                    range: error.dependency.range,
+                    missing: true,
+                    links: []
+                  }
+                ])
+              } else {
+                done(error)
+              }
+            } else {
+              done(null, result)
+            }
+          }
+        )
+      }
+    },
+
+    // Once we have trees for dependencies...
+    ecb(callback, function (dependencyTrees) {
+      // ...combine them to form a new tree.
+      var combinedTree = []
+      dependencyTrees.forEach(function (tree) {
+        mergeFlatTrees(combinedTree, tree)
+      })
+      sortFlatTree(combinedTree)
+      callback(null, combinedTree)
+    })
+  )
+}
+
+function batch (directory, batch, callback) {
+  eachSeries(batch, function (instruction, done) {
+    // TODO check array arg
+    var file = join(directory, instruction.path)
+    mkdirp(dirname(file), ecb(done, function () {
       var value = JSON.stringify(instruction.value)
       fs.appendFile(file, value + '\n', done)
     }))
   }, callback)
 }
 
-prototype._updateDependent = function (
-  sequence, updatedName, updatedVersion, tree, record, callback
+function updateDependent (
+  directory, sequence, updatedName, updatedVersion,
+  tree, record, callback
 ) {
   var dependent = record.dependent
   var name = dependent.name
   var version = dependent.version
-  var self = this
 
   // Find the most current tree for the package.
-  self.query(
+  query(
     name, version, sequence,
     ecb(callback, function (result) {
       // Create a tree with:
@@ -529,8 +471,8 @@ prototype._updateDependent = function (
         }, [])
       })
 
+      // Demote direct dependencies to indirect dependencies.
       treeClone.forEach(function (dependency) {
-        // Demote direct dependencies to indirect dependencies.
         delete dependency.range
       })
 
@@ -543,102 +485,32 @@ prototype._updateDependent = function (
       sortFlatTree(result)
 
       var batch = []
-      pushTreeRecords(
-        batch, name, version, result, sequence
-      )
-      self._batch(batch, ecb(callback, function () {
-        batch = null
-        self.emit('updated', {
-          dependency: {
-            name: updatedName,
-            version: updatedVersion
-          },
-          dependent: dependent
-        })
-        callback()
-      }))
+      pushTreeRecords(batch, name, version, result, sequence)
+      batch(directory, batch, callback)
     })
   )
 }
 
-// Public API
-
 // Get the flat dependency graph for a package and version at a specific
 // sequence number.
-prototype.query = function (name, version, sequence, callback) {
-  var latest = null
-  pump(
-    this._createTreeStream(sequence, name),
-    to.obj(function (chunk, _, done) {
-      if (
-        chunk.version === version &&
-        (latest === null || chunk.sequence > latest.sequence)
-      ) {
-        latest = chunk
-      }
-      done()
+function query (directory, name, version, sequence, callback) {
+  pull(
+    treeStream(directory, sequence, name),
+    filter(function (update) {
+      return update.version === version
     }),
-    function (error) {
-      /* istanbul ignore if */
-      if (error) {
-        callback(error)
+    reduce(laterUpdate, null, ecb(callback, function (latest) {
+      if (latest) {
+        callback(null, latest.tree, latest.sequence)
       } else {
-        if (latest === null) {
-          callback(null, null, null)
-        } else {
-          callback(null, latest.tree, latest.sequence)
-        }
+        callback(null, null, null)
       }
-    }
+    }))
   )
 }
 
-// Get all currently know versions of a package, by name.
-prototype.versions = function (name, callback) {
-  var path = this._path([UPDATE_PREFIX, encodeURIComponent(name)])
-  fs.readFile(path, function (error, buffer) {
-    if (error) {
-      /* istanbul ignore else */
-      if (error.code === 'ENOENT') {
-        callback(null, null)
-      } else {
-        callback(error)
-      }
-    } else {
-      parseJSON(buffer, ecb(callback, function (record) {
-        var versions = record.map(function (element) {
-          return element.updatedVersion
-        })
-        callback(null, versions)
-      }))
-    }
-  })
-}
-
-// Get all currently known package names.
-prototype.packages = function (name) {
-  var files = null
-  var directory = this._path([UPDATE_PREFIX])
-  return from2.obj(function source (_, next) {
-    if (files === null) {
-      fs.readdir(directory, ecb(next, function (read) {
-        files = read
-        source(_, next)
-      }))
-    } else {
-      var file = files.shift()
-      if (file) {
-        next(null, decodeURIComponent(path.parse(file).name))
-      } else {
-        next(null, null)
-      }
-    }
-  })
-}
-
-// Get the last-processed sequence number.
-prototype.sequence = function () {
-  return this._sequence
+function laterUpdate (a, b) {
+  return (a === null || a.sequence > b.sequence) ? a : b
 }
 
 // Helper Functions
@@ -652,12 +524,21 @@ function validName (argument) {
 }
 
 function validVersions (argument) {
-  return typeof argument === 'object'
+  return (
+    typeof argument === 'object' &&
+    Object.keys(argument).every(function (key) {
+      return !isEmptyString(key) && !isEmptyString(argument[key])
+    })
+  )
+}
+
+function isEmptyString (argument) {
+  return typeof argument === 'string' && argument.length !== 0
 }
 
 function pushTreeRecords (batch, name, version, tree, sequence) {
   batch.push({
-    path: [TREE_PREFIX, encodeURIComponent(name)],
+    path: [TREE, encode(name)],
     value: {
       version: version,
       sequence: sequence,
@@ -698,16 +579,4 @@ function prune (object, keysToKeep) {
       delete object[key]
     }
   }
-}
-
-function parser () {
-  return split2(function (line) {
-    try {
-      if (line) {
-        return JSON.parse(line)
-      }
-    } catch (error) {
-      // Pass.
-    }
-  }, {highWaterMark: 4})
 }
