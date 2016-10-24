@@ -220,10 +220,14 @@ function createDependentsStream (directory, sequence, name, version) {
   return filteredNDJSONStream(
     join(directory, DEPENDENCY, encode(name)),
     function (chunk) {
-      return (
-        semver.satisfies(version, chunk.range) &&
-        chunk.sequence <= sequence
-      )
+      try {
+        return (
+          semver.satisfies(version, chunk.range) &&
+          chunk.sequence <= sequence
+        )
+      } catch (error) {
+        return false
+      }
     }
   )
 }
