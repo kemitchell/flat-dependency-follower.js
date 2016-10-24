@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 var pino = require('pino')
 var pull = require('pull-stream')
-var registry = require('registry-pull-stream')
+var registry = require('pull-npm-registry-updates')
 
 var sink = require('./').sink
 var sequence = require('./').sequence
@@ -9,18 +9,18 @@ var sequence = require('./').sequence
 var DIRECTORY = process.env.DIRECTORY || 'follower'
 var log = pino()
 
-sequence(DIRECTORY, function (error, from) {
+sequence(DIRECTORY, function (error, since) {
   if (error && error.code !== 'ENOENT') {
     log.error(error)
     process.exit(1)
   } else {
-    from = from || 0
+    since = since || 0
     log.info({
-      from: from,
+      since: since,
       directory: DIRECTORY
     }, 'start')
     pull(
-      registry(),
+      registry({since: since}),
       function loggingSpy (source) {
         return function (end, callback) {
           source(end, function (end, update) {
