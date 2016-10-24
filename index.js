@@ -128,7 +128,7 @@ function write (directory, log, update, callback) {
       }, 'changed')
       each(changedVersions(last, update), function (version, done) {
         updateVersion(
-          directory, update.sequence, version,
+          directory, log, update.sequence, version,
           ecb(done, function () {
             log.info({
               name: version.updatedName,
@@ -320,7 +320,7 @@ function putUpdate (directory, chunk, callback) {
   }))
 }
 
-function updateVersion (directory, sequence, version, callback) {
+function updateVersion (directory, log, sequence, version, callback) {
   var updatedName = version.updatedName
   var updatedVersion = version.updatedVersion
   var ranges = version.ranges
@@ -381,6 +381,10 @@ function updateVersion (directory, sequence, version, callback) {
       })
 
       writeBatch(directory, updatedBatch, ecb(callback, function () {
+        log.info({
+          name: updatedName,
+          version: updatedVersion
+        }, 'wrote tree')
         // Update trees for packages that directly and indirectly
         // depend on the updated package.
         pull(
@@ -400,6 +404,7 @@ function updateVersion (directory, sequence, version, callback) {
                   directory, sequence, updatedName, updatedVersion,
                   tree, dependent,
                   ecb(callback, function () {
+                    log.info(dependent.dependent, 'updated tree')
                     source(null, next)
                   })
                 )
