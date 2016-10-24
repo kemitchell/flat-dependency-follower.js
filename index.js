@@ -61,7 +61,7 @@ var SEQUENCE = 'sequence'
 var TREE = 'trees'
 var UPDATE = 'updates'
 
-function sink (directory, callback) {
+function sink (directory, log, callback) {
   return pull(
     filter(isPackageUpdate),
     map(pruneUpdate),
@@ -73,7 +73,7 @@ function sink (directory, callback) {
         } else if (end && callback) {
           callback(end)
         } else {
-          write(directory, data, function (error) {
+          write(directory, log, data, function (error) {
             if (error) {
               source(true, function () {
                 callback(error)
@@ -110,7 +110,7 @@ function pruneUpdate (update) {
   return doc
 }
 
-function write (directory, update, callback) {
+function write (directory, log, update, callback) {
   runWaterfall([
     // Read the last saved update, which we will compare with the
     // current update to identify changed versions.
@@ -121,14 +121,28 @@ function write (directory, update, callback) {
     // Identify new and changed versions and process them.
     function (last, done) {
       each(changedVersions(last, update), function (version, done) {
-        updateVersion(directory, update.sequence, version, done)
+        updateVersion(
+          directory, update.sequence, version,
+          ecb(done, function () {
+            log.info({
+              name: version.updatedName,
+              version: version.updatedVersion
+            }, 'updated version')
+            done()
+          })
+        )
       }, done)
     },
 
     // Overwrite the update record for this package, so we can compare
     // it to the next update for this package later.
     function (done) {
-      putUpdate(directory, update, done)
+      putUpdate(directory, update, ecb(done, function () {
+        log.info({
+          name: update.name
+        }, 'saved update')
+        done()
+      }))
     },
 
     // Overwrite the sequence number file.
@@ -139,7 +153,13 @@ function write (directory, update, callback) {
         done
       )
     }
-  ], callback)
+  ], ecb(callback, function () {
+    log.info({
+      sequence: update.sequence,
+      name: update.name
+    }, 'finished update')
+    callback()
+  }))
 }
 
 // Find the tree for the highest package version that satisfies a given

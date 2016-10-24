@@ -1,3 +1,4 @@
+var pino = require('pino')
 var pull = require('pull-stream')
 var runParallel = require('run-parallel')
 var tape = require('tape')
@@ -543,7 +544,8 @@ function testFollower (test, updates, callback) {
           doc: update
         }
       })),
-      sink(directory, function (error) {
+      sink(directory, pino({enabled: false}), function (error) {
+        console.log('got here')
         test.ifError(error, 'no pipeline error')
         callback(directory, function () {
           removeDirectory()

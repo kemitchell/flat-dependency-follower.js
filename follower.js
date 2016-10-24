@@ -36,7 +36,7 @@ sequence(DIRECTORY, function (error, since) {
           })
         }
       },
-      sink(DIRECTORY, function (error) {
+      sink(DIRECTORY, log, function (error) {
         if (error) {
           log.error(error)
           process.exit(1)
