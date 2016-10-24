@@ -120,6 +120,12 @@ function write (directory, log, update, callback) {
 
     // Identify new and changed versions and process them.
     function (last, done) {
+      var changed = changedVersions(last, update)
+      log.info({
+        versions: changed.map(function (element) {
+          return element.updatedVersion
+        })
+      }, 'changed')
       each(changedVersions(last, update), function (version, done) {
         updateVersion(
           directory, update.sequence, version,
