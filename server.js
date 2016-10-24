@@ -14,7 +14,9 @@ var packages = require('./').packages
 var versions = require('./').versions
 
 var DIRECTORY = process.env.DIRECTORY || 'follower'
-var log = pino()
+var log = pino({
+  level: process.env.LOG_LEVEL.toLowerCase() || 'warn'
+})
 
 log.info('start')
 

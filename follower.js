@@ -7,7 +7,9 @@ var sink = require('./').sink
 var sequence = require('./').sequence
 
 var DIRECTORY = process.env.DIRECTORY || 'follower'
-var log = pino()
+var log = pino({
+  level: process.env.LOG_LEVEL.toLowerCase() || 'warn'
+})
 
 sequence(DIRECTORY, function (error, since) {
   if (error && error.code !== 'ENOENT') {
