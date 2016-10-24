@@ -26,10 +26,10 @@ sequence(DIRECTORY, function (error, since) {
       function loggingSpy (source) {
         return function (end, callback) {
           source(end, function (end, update) {
-            if (update && update.hasOwnProperty('sequence')) {
+            if (update && update.hasOwnProperty('seq')) {
               log.info({
-                sequence: update.sequence,
-                name: update.name
+                sequence: update.seq,
+                id: update.id
               }, 'update')
             }
             callback(end, update)
