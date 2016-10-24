@@ -633,10 +633,6 @@ function validName (argument) {
   return typeof argument === 'string' && argument.length !== 0
 }
 
-function isEmptyString (argument) {
-  return typeof argument === 'string' && argument.length === 0
-}
-
 function pushTreeRecords (batch, name, version, tree, sequence) {
   batch.push({
     path: join(TREE, encode(name)),
