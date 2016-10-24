@@ -92,7 +92,7 @@ function isPackageUpdate (update) {
   return (
     update.doc &&
     validName(update.doc.name) &&
-    validVersions(update.doc.versions)
+    update.doc.hasOwnProperty('versions')
   )
 }
 
@@ -394,14 +394,18 @@ function treeFor (
   asyncMap(
     // Turn the Object mapping from package name to SemVer range into an
     // Array of Objects with name and range properties.
-    Object.keys(ranges).map(function (dependencyName) {
-      return {
-        name: dependencyName,
-        range: (typeof ranges[dependencyName] === 'string')
-          ? ranges[dependencyName]
-          : 'INVALID'
-      }
-    }),
+    Object.keys(ranges)
+      .map(function (dependencyName) {
+        return {
+          name: dependencyName,
+          range: (typeof ranges[dependencyName] === 'string')
+            ? ranges[dependencyName]
+            : 'INVALID'
+        }
+      })
+      .filter(function (dependency) {
+        return dependency.name.length !== 0
+      }),
 
     // For each name-and-range pair...
     function (dependency, done) {
@@ -607,21 +611,6 @@ function clone (argument) {
 
 function validName (argument) {
   return typeof argument === 'string' && argument.length !== 0
-}
-
-function validVersions (argument) {
-  return Object.keys(argument).every(function (version) {
-    var value = argument[version]
-    return (
-      !isEmptyString(version) &&
-      (
-        !value.hasOwnProperty('dependencies') ||
-        Object.keys(value.dependencies).every(function (dep) {
-          return !isEmptyString(value.dependencies[dep])
-        })
-      )
-    )
-  })
 }
 
 function isEmptyString (argument) {
