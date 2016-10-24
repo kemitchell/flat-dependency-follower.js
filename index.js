@@ -196,10 +196,14 @@ function maxSatisfying (directory, sequence, name, range, callback) {
 
 function higherMatch (range) {
   return function (a, b) {
-    return (
-      semver.satisfies(b.version, range) &&
-      (a === null || semver.compare(a.version, b.version) === -1)
-    ) ? b : a
+    try {
+      return (
+        semver.satisfies(b.version, range) &&
+        (a === null || semver.compare(a.version, b.version) === -1)
+      ) ? b : a
+    } catch (error) {
+      return a
+    }
   }
 }
 
