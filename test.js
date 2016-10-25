@@ -545,7 +545,6 @@ function testFollower (test, updates, callback) {
         }
       })),
       sink(directory, pino({enabled: false}), function (error) {
-        console.log('got here')
         test.ifError(error, 'no pipeline error')
         callback(directory, function () {
           removeDirectory()
