@@ -247,16 +247,29 @@ function treeStream (directory, sequence, name) {
 // on a specific version of a specific package at or before a given
 // sequence number.
 function createDependentsStream (directory, sequence, name, version) {
+  var seen = {}
   return filteredNDJSONStream(
     join(directory, DEPENDENCY, encode(name)),
     function (chunk) {
-      try {
-        return (
-          semver.satisfies(version, chunk.range) &&
-          chunk.sequence <= sequence
-        )
-      } catch (error) {
+      var dependent = chunk.dependent
+      if (!seen.hasOwnProperty(dependent.name)) {
+        seen[dependent.name] = []
+      }
+      var alreadySeen = seen[dependent.name]
+        .indexOf(dependent.version) !== -1
+      if (alreadySeen) {
         return false
+      } else {
+        seen[dependent.name].push(dependent.version)
+        try {
+          return (
+            !alreadySeen &&
+            semver.satisfies(version, chunk.range) &&
+            chunk.sequence <= sequence
+          )
+        } catch (error) {
+          return false
+        }
       }
     }
   )
