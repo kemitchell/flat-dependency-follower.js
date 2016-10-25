@@ -126,7 +126,7 @@ function write (directory, log, update, callback) {
           return element.updatedVersion
         })
       }, 'changed')
-      each(changedVersions(last, update), function (version, done) {
+      each(changed, function (version, done) {
         updateVersion(
           directory, log, update.sequence, version,
           ecb(done, function () {
