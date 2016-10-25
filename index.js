@@ -398,6 +398,7 @@ function updateVersion (directory, log, sequence, version, callback) {
           name: updatedName,
           version: updatedVersion
         }, 'wrote tree')
+
         // Update trees for packages that directly and indirectly
         // depend on the updated package.
         pull(
@@ -413,7 +414,14 @@ function updateVersion (directory, log, sequence, version, callback) {
                   directory, sequence, updatedName, updatedVersion,
                   tree, dependent,
                   ecb(callback, function () {
-                    log.info(dependent.dependent, 'updated dependent')
+                    log.info({
+                      dependent: dependent.dependent,
+                      dependency: {
+                        name: updatedName,
+                        versions: updatedVersion,
+                        range: dependent.range
+                      }
+                    }, 'updated dependent')
                     source(null, next)
                   })
                 )
