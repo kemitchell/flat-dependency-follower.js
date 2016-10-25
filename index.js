@@ -413,7 +413,7 @@ function updateVersion (directory, log, sequence, version, callback) {
                   directory, sequence, updatedName, updatedVersion,
                   tree, dependent,
                   ecb(callback, function () {
-                    log.info(dependent.dependent, 'updated tree')
+                    log.info(dependent.dependent, 'updated dependent')
                     source(null, next)
                   })
                 )
