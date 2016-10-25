@@ -394,11 +394,7 @@ function updateVersion (directory, log, sequence, version, callback) {
           function sink (source) {
             source(null, function next (end, dependent) {
               if (end === true) {
-                callback()
-              } else if (end) {
-                source(end, function () {
-                  callback(end)
-                })
+                callback(end === true ? null : end)
               } else {
                 updateDependent(
                   directory, sequence, updatedName, updatedVersion,
