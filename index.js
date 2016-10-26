@@ -199,16 +199,15 @@ function maxSatisfying (directory, sequence, name, range, callback) {
             version: max.version,
             range: range,
             // Link to all direct dependencies.
-            links: max.tree
-              .reduce(function (links, dependency) {
-                return dependency.range
-                  ? links.concat({
-                    name: dependency.name,
-                    version: dependency.version,
-                    range: dependency.range
-                  })
-                  : links
-              }, [])
+            links: max.tree.reduce(function (links, dependency) {
+              return dependency.range
+                ? links.concat({
+                  name: dependency.name,
+                  version: dependency.version,
+                  range: dependency.range
+                })
+                : links
+            }, [])
           }
         ]
 
