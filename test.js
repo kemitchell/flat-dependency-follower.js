@@ -28,6 +28,41 @@ tape('x -> y', function (test) {
   })
 })
 
+tape('y, y, x -> y', function (test) {
+  testFollower(test, [
+    {name: 'z', versions: {'1.0.0': {dependencies: {}}}},
+    {name: 'y', versions: {'1.0.0': {dependencies: {z: '^1.0.0'}}}},
+    {name: 'x', versions: {'1.0.0': {dependencies: {y: '^1.0.0'}}}},
+    {name: 'z', versions: {'1.0.1': {dependencies: {}}}},
+    {
+      name: 'y',
+      versions: {
+        '1.0.0': {dependencies: {z: '^1.0.0'}},
+        '1.0.1': {dependencies: {z: '^1.0.0'}}
+      }
+    }
+  ], function (directory, done) {
+    query(directory, 'x', '1.0.0', 5, function (error, tree, sequence) {
+      test.ifError(error, 'no error')
+      test.equal(sequence, 5, 'sequence is 5')
+      test.deepEqual(
+        tree,
+        [
+          {
+            name: 'y',
+            version: '1.0.1',
+            range: '^1.0.0',
+            links: [{name: 'z', range: '^1.0.0', version: '1.0.1'}]
+          },
+          {name: 'z', version: '1.0.1', links: []}
+        ],
+        'yields tree'
+      )
+      done()
+    })
+  })
+})
+
 tape('y@2; y@10; x -> y@*', function (test) {
   testFollower(test, [
     // Lexicographically: 2.0.0 > 10.0.0
