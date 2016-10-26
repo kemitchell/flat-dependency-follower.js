@@ -434,7 +434,7 @@ function updateVersion (
                         dependent: dependent.dependent,
                         dependency: {
                           name: updatedName,
-                          versions: updatedVersion,
+                          version: updatedVersion,
                           range: range
                         }
                       }, 'updated dependent')
