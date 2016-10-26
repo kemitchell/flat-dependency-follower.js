@@ -121,9 +121,13 @@ function write (directory, log, update, callback) {
     // Identify new and changed versions and process them.
     function (last, done) {
       var changed = changedVersions(last, update)
-      var versions = changed.map(function (element) {
-        return element.updatedVersion
-      })
+      var versions = changed
+        .map(function (element) {
+          return element.updatedVersion
+        })
+        .filter(function (version) {
+          return semver.valid(version) !== null
+        })
       log.info({
         versions: versions
       }, 'changed')
