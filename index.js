@@ -51,7 +51,7 @@ var decode = decodeURIComponent
 // - A "version" is a node-semver version or URL.
 
 exports.packages = packages
-exports.query = query
+exports.tree = readTree
 exports.sequence = sequence
 exports.sink = sink
 exports.versions = versions
@@ -65,15 +65,15 @@ function sink (directory, log, callback) {
   return pull(
     filter(isPackageUpdate),
     map(pruneUpdate),
-    function writeToDirectory (source) {
+    function (source) {
       source(null, next)
-      function next (end, data) {
+      function next (end, update) {
         if (end === true && callback) {
           callback()
         } else if (end && callback) {
           callback(end)
         } else {
-          write(directory, log, data, function (error) {
+          writeUpdate(directory, log, update, function (error) {
             if (error) {
               source(true, function () {
                 callback(error)
@@ -110,12 +110,12 @@ function pruneUpdate (update) {
   return doc
 }
 
-function write (directory, log, update, callback) {
+function writeUpdate (directory, log, update, callback) {
   runWaterfall([
     // Read the last saved update, which we will compare with the
     // current update to identify changed versions.
     function (done) {
-      getLastUpdate(directory, update.name, done)
+      readLastUpdate(directory, update.name, done)
     },
 
     // Identify new and changed versions and process them.
@@ -132,7 +132,7 @@ function write (directory, log, update, callback) {
         versions: versions
       }, 'changed')
       each(changed, function (version, done) {
-        updateVersion(
+        writeVersion(
           directory, log, update.sequence, version, versions,
           ecb(done, function () {
             log.info({
@@ -148,7 +148,7 @@ function write (directory, log, update, callback) {
     // Overwrite the update record for this package, so we can compare
     // it to the next update for this package later.
     function (done) {
-      putUpdate(directory, update, ecb(done, function () {
+      saveUpdate(directory, update, ecb(done, function () {
         log.info({
           name: update.name
         }, 'saved update')
@@ -175,9 +175,11 @@ function write (directory, log, update, callback) {
 
 // Find the tree for the highest package version that satisfies a given
 // SemVer range.
-function maxSatisfying (directory, sequence, name, range, callback) {
+function findMaxSatisfying (
+  directory, sequence, name, range, callback
+) {
   pull(
-    treeStream(directory, sequence, name),
+    treesStream(directory, sequence, name),
     reduce(higherMatch(range), null, ecb(callback, function (max) {
       // If there isn't a match, yield an informative error with
       // structured data about the failed query.
@@ -238,7 +240,7 @@ function higherMatch (range) {
 }
 
 // Find all stored trees for a package at or before a given sequence.
-function treeStream (directory, sequence, name) {
+function treesStream (directory, sequence, name) {
   return filteredNDJSONStream(
     join(directory, TREE, encode(name)),
     function (chunk) {
@@ -250,7 +252,7 @@ function treeStream (directory, sequence, name) {
 // Use key-only index records to find all direct and indirect dependents
 // on a specific version of a specific package at or before a given
 // sequence number.
-function createDependentsStream (directory, sequence, name, version) {
+function dependentsStream (directory, sequence, name, version) {
   var seen = {}
   return filteredNDJSONStream(
     join(directory, DEPENDENCY, encode(name)),
@@ -306,7 +308,7 @@ function suppressENOENT (source) {
   }
 }
 
-function getLastUpdate (directory, name, callback) {
+function readLastUpdate (directory, name, callback) {
   var path = join(directory, UPDATE, encode(name))
   fs.readFile(path, function (error, buffer) {
     if (error) {
@@ -324,7 +326,7 @@ function getLastUpdate (directory, name, callback) {
   })
 }
 
-function putUpdate (directory, chunk, callback) {
+function saveUpdate (directory, chunk, callback) {
   var value = Object.keys(chunk.versions).map(function (version) {
     return {
       updatedVersion: version,
@@ -337,7 +339,7 @@ function putUpdate (directory, chunk, callback) {
   }))
 }
 
-function updateVersion (
+function writeVersion (
   directory, log, sequence, version, otherUpdatedVersions, callback
 ) {
   var updatedName = version.updatedName
@@ -345,7 +347,7 @@ function updateVersion (
   var ranges = version.ranges
 
   // Compute the flat package dependency manifest for the new package.
-  treeFor(
+  calculateTreeFor(
     directory, sequence, updatedName, updatedVersion, ranges,
     ecb(callback, function (tree) {
       var updatedBatch = []
@@ -408,7 +410,7 @@ function updateVersion (
         // Update trees for packages that directly and indirectly
         // depend on the updated package.
         pull(
-          createDependentsStream(
+          dependentsStream(
             directory, sequence, updatedName, updatedVersion
           ),
           function sink (source) {
@@ -452,7 +454,7 @@ function updateVersion (
 
 // Generate a tree for a package, based on the `.dependencies` object in
 // its `package.json`.
-function treeFor (
+function calculateTreeFor (
   directory, sequence, name, version, ranges, callback
 ) {
   asyncMap(
@@ -486,7 +488,7 @@ function treeFor (
       } else {
         // ...find the dependency tree for the highest version that
         // satisfies the range.
-        maxSatisfying(
+        findMaxSatisfying(
           directory, sequence, dependency.name, dependency.range,
           function (error, result) {
             if (error) {
@@ -544,12 +546,12 @@ function updateDependent (
   var version = dependent.version
 
   // Find the most current tree for the package.
-  query(
+  readTree(
     directory, name, version, sequence,
     ecb(callback, function (result) {
       // Create a tree with:
       //
-      // 1. the update package
+      // 1. the updated package
       // 2. the updated package's dependencies
       //
       // and use it to update the existing tree for the
@@ -592,9 +594,9 @@ function updateDependent (
 
 // Get the flat dependency graph for a package and version at a specific
 // sequence number.
-function query (directory, name, version, sequence, callback) {
+function readTree (directory, name, version, sequence, callback) {
   pull(
-    treeStream(directory, sequence, name),
+    treesStream(directory, sequence, name),
     filter(function (update) {
       return update.version === version
     }),

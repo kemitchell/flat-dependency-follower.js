@@ -6,7 +6,7 @@ var temporaryDirectory = require('temporary-directory')
 var values = require('pull-stream').values
 
 var packages = require('./').packages
-var query = require('./').query
+var tree = require('./').tree
 var sink = require('./').sink
 var versions = require('./').versions
 
@@ -15,7 +15,7 @@ tape('x -> y', function (test) {
     {name: 'y', versions: {'1.0.0': {dependencies: {}}}},
     {name: 'x', versions: {'1.0.0': {dependencies: {y: '^1.0.0'}}}}
   ], function (directory, done) {
-    query(directory, 'x', '1.0.0', 2, function (error, tree, sequence) {
+    tree(directory, 'x', '1.0.0', 2, function (error, tree, sequence) {
       test.ifError(error, 'no error')
       test.equal(sequence, 2, 'sequence is 2')
       test.deepEqual(
@@ -36,7 +36,7 @@ tape('y@2; y@10; x -> y@*', function (test) {
     {name: 'y', versions: {'10.0.0': {dependencies: {}}}},
     {name: 'x', versions: {'1.0.0': {dependencies: {y: '*'}}}}
   ], function (directory, done) {
-    query(directory, 'x', '1.0.0', 3, function (error, tree, sequence) {
+    tree(directory, 'x', '1.0.0', 3, function (error, tree, sequence) {
       test.ifError(error, 'no error')
       test.equal(sequence, 3, 'sequence is 3')
       test.deepEqual(
@@ -55,7 +55,7 @@ tape('x -> y -> z', function (test) {
     {name: 'y', versions: {'1.0.0': {dependencies: {z: '^1.0.0'}}}},
     {name: 'x', versions: {'1.0.0': {dependencies: {y: '^1.0.0'}}}}
   ], function (directory, done) {
-    query(directory, 'x', '1.0.0', 3, function (error, tree, sequence) {
+    tree(directory, 'x', '1.0.0', 3, function (error, tree, sequence) {
       test.ifError(error, 'no error')
       test.equal(sequence, 3, 'sequence is 3')
       test.deepEqual(
@@ -84,7 +84,7 @@ tape('w -> x -> y -> z ; new z', function (test) {
     {name: 'w', versions: {'1.0.0': {dependencies: {x: '^1.0.0'}}}},
     {name: 'z', versions: {'1.0.1': {dependencies: {}}}}
   ], function (directory, done) {
-    query(directory, 'w', '1.0.0', 5, function (error, tree, sequence) {
+    tree(directory, 'w', '1.0.0', 5, function (error, tree, sequence) {
       test.ifError(error, 'no error')
       test.equal(sequence, 5, 'sequence is 5')
       test.deepEqual(
@@ -119,7 +119,7 @@ tape('w -> x -> y -> z -> a; new y', function (test) {
     {name: 'w', versions: {'1.0.0': {dependencies: {x: '^1.0.0'}}}},
     {name: 'y', versions: {'1.0.1': {dependencies: {z: '^1.0.0'}}}}
   ], function (directory, done) {
-    query(directory, 'w', '1.0.0', 6, function (error, tree, sequence) {
+    tree(directory, 'w', '1.0.0', 6, function (error, tree, sequence) {
       test.ifError(error, 'no error')
       test.equal(sequence, 6, 'sequence is 6')
       test.deepEqual(
@@ -164,7 +164,7 @@ tape('w -> x -> y -> z ; new y', function (test) {
   ], function (directory, done) {
     runParallel([
       function (done) {
-        query(
+        tree(
           directory, 'w', '1.0.0', 5,
           function (error, tree, sequence) {
             test.ifError(error, 'no error')
@@ -196,7 +196,7 @@ tape('w -> x -> y -> z ; new y', function (test) {
         )
       },
       function (done) {
-        query(
+        tree(
           directory, 'x', '1.0.0', 5,
           function (error, tree, sequence) {
             test.ifError(error, 'no error')
@@ -221,7 +221,7 @@ tape('w -> x -> y -> z ; new y', function (test) {
         )
       },
       function (done) {
-        query(
+        tree(
           directory, 'y', '1.0.1', 5,
           function (error, tree, sequence) {
             test.ifError(error, 'no error')
@@ -243,7 +243,7 @@ tape('w -> x -> y -> z ; new y', function (test) {
         )
       },
       function (done) {
-        query(
+        tree(
           directory, 'z', '1.0.0', 5,
           function (error, tree, sequence) {
             test.ifError(error, 'no error')
@@ -266,7 +266,7 @@ tape('x -> y -> z at earlier sequence', function (test) {
     {name: 'y', versions: {'1.0.0': {dependencies: {z: '^1.0.0'}}}},
     {name: 'x', versions: {'1.0.0': {dependencies: {y: '^1.0.0'}}}}
   ], function (directory, done) {
-    query(directory, 'x', '1.0.0', 2, function (error, tree, sequence) {
+    tree(directory, 'x', '1.0.0', 2, function (error, tree, sequence) {
       test.ifError(error, 'no error')
       test.equal(tree, null, 'no tree')
       test.equal(sequence, null, 'no sequence')
@@ -283,7 +283,7 @@ tape('y@1.0.0 ; x -> y@^1.0.0 ; y@1.0.1', function (test) {
   ], function (directory, done) {
     runParallel([
       function (done) {
-        query(directory, 'x', '1.0.0', 2, function (error, tree) {
+        tree(directory, 'x', '1.0.0', 2, function (error, tree) {
           test.ifError(error, 'no error')
           test.deepEqual(
             tree,
@@ -301,7 +301,7 @@ tape('y@1.0.0 ; x -> y@^1.0.0 ; y@1.0.1', function (test) {
         })
       },
       function (done) {
-        query(directory, 'x', '1.0.0', 3, function (error, tree) {
+        tree(directory, 'x', '1.0.0', 3, function (error, tree) {
           test.ifError(error, 'no error')
           test.deepEqual(
             tree,
@@ -340,7 +340,7 @@ tape('y@1.0.0 ; x -> y@^1.0.0 and z@git', function (test) {
       }
     }
   ], function (directory, done) {
-    query(directory, 'x', '1.0.0', 2, function (error, tree) {
+    tree(directory, 'x', '1.0.0', 2, function (error, tree) {
       test.ifError(error, 'no error')
       test.deepEqual(
         tree,
@@ -367,7 +367,7 @@ tape('x@1 -> y@1; x@2 -> y@2', function (test) {
     {name: 'y', versions: {'2.0.0': {dependencies: {}}}},
     {name: 'x', versions: {'2.0.0': {dependencies: {y: '^2.0.0'}}}}
   ], function (directory, done) {
-    query(directory, 'x', '2.0.0', 4, function (error, tree, sequence) {
+    tree(directory, 'x', '2.0.0', 4, function (error, tree, sequence) {
       test.ifError(error, 'no error')
       test.equal(sequence, 4, 'sequence is 4')
       test.deepEqual(
@@ -447,7 +447,7 @@ tape('dependency appears later', function (test) {
   ], function (directory, done) {
     runParallel([
       function (done) {
-        query(directory, 'x', '1.0.0', 1, function (error, tree) {
+        tree(directory, 'x', '1.0.0', 1, function (error, tree) {
           test.ifError(error, 'no error')
           test.deepEqual(
             tree,
@@ -458,7 +458,7 @@ tape('dependency appears later', function (test) {
         })
       },
       function (done) {
-        query(directory, 'x', '1.0.0', 2, function (error, tree) {
+        tree(directory, 'x', '1.0.0', 2, function (error, tree) {
           test.ifError(error, 'no error')
           test.deepEqual(
             tree,
@@ -496,7 +496,7 @@ tape('non-publish update', function (test) {
     {name: 'y', versions: {'1.0.0': {dependencies: {}}}},
     {name: 'x', versions: {'1.0.0': {dependencies: {y: '^1.0.0'}}}}
   ], function (directory, done) {
-    query(directory, 'x', '1.0.0', 3, function (error, tree, sequence) {
+    tree(directory, 'x', '1.0.0', 3, function (error, tree, sequence) {
       test.ifError(error, 'no error')
       test.equal(sequence, 3, 'sequence is 3')
       test.deepEqual(
@@ -521,7 +521,7 @@ tape('malformed dependencies object', function (test) {
       }
     }
   ], function (directory, done) {
-    query(directory, 'y', '1.0.0', 2, function (error, tree, sequence) {
+    tree(directory, 'y', '1.0.0', 2, function (error, tree, sequence) {
       test.ifError(error, 'no error')
       test.equal(sequence, 2, 'sequence is 2')
       test.deepEqual(

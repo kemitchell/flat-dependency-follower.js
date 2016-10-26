@@ -9,7 +9,7 @@ var to = require('stream-to-pull-stream')
 var url = require('url')
 
 var sequence = require('./').sequence
-var query = require('./').query
+var tree = require('./').tree
 var packages = require('./').packages
 var versions = require('./').versions
 
@@ -101,7 +101,7 @@ var server = http.createServer(function (request, response) {
   }
 
   function withSequence (sequence) {
-    query(
+    tree(
       DIRECTORY, name, version, sequence,
       function (error, tree) {
         if (error) {
