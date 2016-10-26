@@ -121,14 +121,15 @@ function write (directory, log, update, callback) {
     // Identify new and changed versions and process them.
     function (last, done) {
       var changed = changedVersions(last, update)
+      var versions = changed.map(function (element) {
+        return element.updatedVersion
+      })
       log.info({
-        versions: changed.map(function (element) {
-          return element.updatedVersion
-        })
+        versions: versions
       }, 'changed')
       each(changed, function (version, done) {
         updateVersion(
-          directory, log, update.sequence, version,
+          directory, log, update.sequence, version, versions,
           ecb(done, function () {
             log.info({
               name: version.updatedName,
@@ -333,7 +334,9 @@ function putUpdate (directory, chunk, callback) {
   }))
 }
 
-function updateVersion (directory, log, sequence, version, callback) {
+function updateVersion (
+  directory, log, sequence, version, otherUpdatedVersions, callback
+) {
   var updatedName = version.updatedName
   var updatedVersion = version.updatedVersion
   var ranges = version.ranges
@@ -410,21 +413,31 @@ function updateVersion (directory, log, sequence, version, callback) {
               if (end === true) {
                 callback(end === true ? null : end)
               } else {
-                updateDependent(
-                  directory, sequence, updatedName, updatedVersion,
-                  tree, dependent,
-                  ecb(callback, function () {
-                    log.info({
-                      dependent: dependent.dependent,
-                      dependency: {
-                        name: updatedName,
-                        versions: updatedVersion,
-                        range: dependent.range
-                      }
-                    }, 'updated dependent')
-                    source(null, next)
-                  })
+                var range = dependent.range
+                var max = semver.maxSatisfying(
+                  otherUpdatedVersions, range
                 )
+                // Some other version modified by this update better
+                // matches the range.
+                if (max !== updatedVersion) {
+                  source(null, next)
+                } else {
+                  updateDependent(
+                    directory, sequence, updatedName, updatedVersion,
+                    tree, dependent,
+                    ecb(callback, function () {
+                      log.info({
+                        dependent: dependent.dependent,
+                        dependency: {
+                          name: updatedName,
+                          versions: updatedVersion,
+                          range: range
+                        }
+                      }, 'updated dependent')
+                      source(null, next)
+                    })
+                  )
+                }
               }
             })
           }
