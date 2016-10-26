@@ -8,7 +8,9 @@ var sequence = require('./').sequence
 
 var DIRECTORY = process.env.DIRECTORY || 'follower'
 var log = pino({
-  level: process.env.LOG_LEVEL.toLowerCase() || 'warn'
+  level: process.env.LOG_LEVEL
+    ? process.env.LOG_LEVEL.toLowerCase()
+    : 'warn'
 })
 
 var IGNORE = process.env.IGNORE
