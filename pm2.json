@@ -1,0 +1,31 @@
+{
+  "apps": [
+    {
+      "name": "follower",
+      "script": "flat-dependency-follower",
+      "watch": false,
+      "autorestart": true,
+      "node_args": "--max-old-space-size=4096",
+      "out_file": "follower.log",
+      "err_file": "follower.log",
+      "env": {
+        "LOG_LEVEL": "info",
+        "DIRECTORY": "data",
+        "IGNORE": "flint,flint-runner,flint-js,flint-transform,flint-tools"
+      }
+    },
+    {
+      "name": "server",
+      "script": "flat-dependency-server",
+      "watch": false,
+      "autorestart": true,
+      "out_file": "server.log",
+      "err_file": "server.log",
+      "env": {
+        "LOG_LEVEL": "info",
+        "DIRECTORY": "data",
+        "PORT": "8080"
+      }
+    }
+  ]
+}

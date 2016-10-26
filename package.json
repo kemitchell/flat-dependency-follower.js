@@ -38,7 +38,8 @@
   "files": [
     "index.js",
     "follower.js",
-    "server.js"
+    "server.js",
+    "pm2.json"
   ],
   "keywords": [
     "dependencies",
