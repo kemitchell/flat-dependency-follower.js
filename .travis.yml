@@ -1,5 +1,7 @@
 ---
-language: "node_js"
-node_js: "node"
-script: [ "npm run coverage", "npm run lint" ]
+language: node_js
+node_js: node
+script:
+- npm test
+- npm run lint
 sudo: false
