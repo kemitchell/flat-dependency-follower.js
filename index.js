@@ -7,6 +7,7 @@ var semver = require('semver')
 // Streams
 var cat = require('pull-cat')
 var decodeUTF8 = require('pull-utf8-decoder')
+var defer = require('pull-defer')
 var filter = require('pull-stream').filter
 var map = require('pull-stream').map
 var pull = require('pull-stream')
@@ -28,7 +29,6 @@ var dirname = require('path').dirname
 var fs = require('fs')
 var join = require('path').join
 var mkdirp = require('mkdirp')
-var parse = require('path').parse
 
 var encode = encodeURIComponent
 var decode = decodeURIComponent
@@ -648,22 +648,15 @@ function versions (directory, name, callback) {
 // Get all currently known package names.
 function packages (directory, name) {
   directory = join(directory, UPDATE)
-  var files
-  return function source (end, callback) {
-    if (files === undefined) {
-      fs.readdir(directory, ecb(callback, function (read) {
-        files = read
-        source(end, callback)
-      }))
-    } else {
-      var file = files.shift()
-      if (file) {
-        callback(null, decode(parse(file).name))
-      } else {
-        callback(true)
-      }
-    }
-  }
+  var deferred = defer.source()
+  fs.readdir(directory, function (error, read) {
+    deferred.resolve(
+      error
+        ? pull.error(error)
+        : pull(pull.values(read), map(decode))
+    )
+  })
+  return deferred
 }
 
 // Get the last-processed sequence number.

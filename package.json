@@ -17,6 +17,7 @@
     "mkdirp": "^0.5.1",
     "pino": "^2.7.5",
     "pull-cat": "^1.1.11",
+    "pull-defer": "^0.2.2",
     "pull-file": "^1.0.0",
     "pull-npm-registry-updates": "^1.0.0",
     "pull-split": "^0.2.0",
