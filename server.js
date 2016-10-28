@@ -27,7 +27,6 @@ var PACKAGE_PATH = new RegExp(
   '/packages' +
   '/([^/]+)' + // package name
   '(/([^/]+))?' + // optional package version
-  '(/([1-9][0-9]+))?' + // optional sequence
   '$'
 )
 
@@ -74,12 +73,22 @@ var server = http.createServer(function (request, response) {
       var name = decodeURIComponent(match[1])
       if (match[3]) {
         var version = decodeURIComponent(match[3])
-        var atSequence = Math.floor(Number(match[5]))
-        if (atSequence) {
-          withSequence(atSequence)
-        } else {
-          sequence(DIRECTORY, ecb(internalError, withSequence))
-        }
+        tree(DIRECTORY, name, version, function (error, tree) {
+          if (error) {
+            internalError()
+          } else {
+            if (!tree) {
+              notFound()
+            } else {
+              sendJSON({
+                package: name,
+                version: version,
+                sequence: sequence,
+                tree: tree
+              })
+            }
+          }
+        })
       } else {
         versions(DIRECTORY, name, function (error, versions) {
           if (error) {
@@ -100,28 +109,6 @@ var server = http.createServer(function (request, response) {
     sendJSON(process.memoryUsage())
   } else {
     notFound()
-  }
-
-  function withSequence (sequence) {
-    tree(
-      DIRECTORY, name, version, sequence,
-      function (error, tree) {
-        if (error) {
-          internalError()
-        } else {
-          if (!tree) {
-            notFound()
-          } else {
-            sendJSON({
-              package: name,
-              version: version,
-              sequence: sequence,
-              tree: tree
-            })
-          }
-        }
-      }
-    )
   }
 
   function sendJSON (object) {
