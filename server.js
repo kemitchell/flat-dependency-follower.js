@@ -2,16 +2,20 @@
 var ecb = require('ecb')
 var http = require('http')
 var https = require('https')
+var mergeFlatTrees = require('merge-flat-package-trees')
 var parse = require('json-parse-errback')
 var pino = require('pino')
 var pull = require('pull-stream')
+var querystring = require('querystring')
 var to = require('stream-to-pull-stream')
 var url = require('url')
+var runParallel = require('run-parallel')
 
 var sequence = require('./').sequence
 var tree = require('./').tree
 var packages = require('./').packages
 var versions = require('./').versions
+var maxSatisfying = require('./').maxSatisfying
 
 var DIRECTORY = process.env.DIRECTORY || 'follower'
 var log = pino({
@@ -37,7 +41,8 @@ var server = http.createServer(function (request, response) {
     return
   }
 
-  var pathname = url.parse(request.url).pathname
+  var parsed = url.parse(request.url)
+  var pathname = parsed.pathname
   if (pathname === '/sequence') {
     sequence(DIRECTORY, ecb(internalError, function (sequence) {
       response.end(JSON.stringify(sequence))
@@ -107,6 +112,30 @@ var server = http.createServer(function (request, response) {
     }
   } else if (pathname === '/memory') {
     sendJSON(process.memoryUsage())
+  } else if (pathname === '/resolution') {
+    var query = querystring.parse(parsed.query)
+    var result = []
+    runParallel(
+      Object.keys(query).map(function (name) {
+        return function (done) {
+          maxSatisfying(
+            DIRECTORY, name, query[name],
+            ecb(done, function (tree) {
+              mergeFlatTrees(result, tree)
+              done()
+            })
+          )
+        }
+      }),
+      function (error) {
+        if (error) {
+          internalError()
+        } else {
+          response.setHeader('Content-Type', 'application/json')
+          response.end(JSON.stringify(result))
+        }
+      }
+    )
   } else {
     notFound()
   }
