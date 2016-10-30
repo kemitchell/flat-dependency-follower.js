@@ -56,6 +56,7 @@ exports.tree = readTree
 exports.sequence = sequence
 exports.sink = sink
 exports.versions = versions
+exports.maxSatisfying = findMaxSatisfying
 
 var DEPENDENCY = 'dependencies'
 var SEQUENCE = 'sequence'
