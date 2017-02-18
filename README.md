@@ -1,14 +1,14 @@
 An [npm registry follower][follower] that calculates and recalculates
 dependency trees for every public package on each registry update.
 Clients can fetch data structures describing the dependency tree of any
-version of any package at any point in the public registry's history,
-by CouchDB-style replication update sequence number.
+version of any package.
 
 [follower]: https://github.com/npm/registry-follower-tutorial
 
-Exports a `Writable` stream that reads CouchDB-style update objects
-and provides a query method.  Installs a server that follows the npm
-public registry and serves results via HTTP.
+Exports a pull-stream sink for consuming registry updates and a number
+of functions for reading data from the resulting flat-file store.
+Installs a server that follows the npm public registry and serves
+results via HTTP.
 
 ## Flat Package Trees?
 
@@ -41,8 +41,9 @@ Flat package manifests are [adjacency lists] shaped like:
 
 [adjacency lists]: https://en.wikipedia.org/wiki/Adjacency_list
 
-Flat package trees differ from graphs produced by either npm version
-2 or npm version 3 in a number of ways.  A few we know about:
+Flat package trees differ from graphs produced by recent versions
+of the npm command-line interface in a number of ways.  A few we
+know about:
 
 1.  Flat package tree resolution is "aggressive":  Version ranges
     always resolve to the highest-available version of the dependency
@@ -67,9 +68,8 @@ Useful request paths include:
 -  `GET /packages/{name}` serves a JSON array of package versions known
     to the follower.
 
--  `GET /packages/{name}/{version}{/sequence}`, where `sequence` is the
-   server's current sequence by default.  Serves a flat dependency
-   tree, if any, as JSON.
+-  `GET /packages/{name}/{version}` serves a flat dependency tree,
+   if any, as JSON.
 
 -  `GET /sequence` serves the server's current sequence number.
 
