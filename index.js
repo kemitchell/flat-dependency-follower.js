@@ -63,10 +63,12 @@ var SEQUENCE = 'sequence'
 var TREE = 'trees'
 var UPDATE = 'updates'
 
+// A pull-stream sink for consuming update objects from the npm public
+// registry's CouchDB-style replication endpoint.
 function sink (directory, log, callback) {
   return pull(
     filter(isPackageUpdate),
-    map(pruneUpdate),
+    map(removeUnnecessaryProperties),
     function (source) {
       source(null, next)
       function next (end, update) {
@@ -98,7 +100,12 @@ function isPackageUpdate (update) {
   )
 }
 
-function pruneUpdate (update) {
+// The sink needs just a few of the properties of the update objects
+// that the replication endpoint provides.  The unneeded properties can
+// actually take up quite a bit of memory.  In particular, the full
+// update documents include the README text of every version of the
+// changed package.
+function removeUnnecessaryProperties (update) {
   delete update.changes
   var doc = update.doc
   prune(doc, ['versions', 'name'])
@@ -123,8 +130,8 @@ function writeUpdate (directory, log, update, callback) {
 
     // Identify new and changed versions and process them.
     function (last, done) {
-      var changed = changedVersions(last, update)
-      var versions = changed
+      var changedVersions = findChangedVersions(last, update)
+      var versions = changedVersions
         .map(function (element) {
           return element.updatedVersion
         })
@@ -134,7 +141,7 @@ function writeUpdate (directory, log, update, callback) {
       log.info({
         versions: versions
       }, 'changed')
-      eachSeries(changed, function (version, done) {
+      eachSeries(changedVersions, function (version, done) {
         writeVersion(
           directory, log, version, versions,
           ecb(done, function () {
@@ -298,6 +305,9 @@ function filteredNDJSONStream (path, predicate) {
   )
 }
 
+// Swallow ENOENT errors from a pipeline, ending the stream instead of
+// yielding the error.  Used where the nonexistence of a requested file
+// indicates just that the stream of data it represents is empty.
 function suppressENOENT (source) {
   return function sink (end, callback) {
     source(end, function (end, data) {
@@ -309,6 +319,9 @@ function suppressENOENT (source) {
   }
 }
 
+// Read the last update, if any, for the given package.  The last update
+// for each seen package is cached, so the sink can compare new updates
+// and process only those versions that have changed.
 function readLastUpdate (directory, name, callback) {
   var path = join(directory, UPDATE, encode(name))
   fs.readFile(path, function (error, buffer) {
@@ -327,6 +340,7 @@ function readLastUpdate (directory, name, callback) {
   })
 }
 
+// Save an update from the registry replication update to disk.
 function saveUpdate (directory, chunk, callback) {
   var value = Object.keys(chunk.versions).map(function (version) {
     return {
@@ -524,17 +538,24 @@ function calculateTreeFor (directory, name, version, ranges, callback) {
 function writeBatch (directory, batch, callback) {
   eachSeries(batch, function (instruction, done) {
     var file = join(directory, instruction.path)
+
+    // Create the directory for the file if it doesn't already exist.
     mkdirp(dirname(file), ecb(done, function () {
+
       var value = JSON.stringify(instruction.value)
       /* istanbul ignore else */
       if (instruction.type === 'append') {
         fs.appendFile(file, value + '\n', done)
       } else if (instruction.type === 'replace') {
         fs.stat(file, function (error, stats) {
+          // To replace a file that doesn't exist yet, and therefore
+          // throws ENOENT on fs.stat, just write the file.
           var missing = error && error.code === 'ENOENT'
           if (error && !missing) {
             done(error)
           } else {
+            // Create a new source stream that's the current content
+            // with the new value at the end.
             var source = pull(
               cat([
                 filteredNDJSONStream(file, function (chunk) {
@@ -563,6 +584,9 @@ function writeBatch (directory, batch, callback) {
   }, callback)
 }
 
+// Once we've updated the package tree for an updated package, go back
+// and update the trees for all the packages that depend on it, directly
+// or indirectly.
 function updateDependent (
   directory, updatedName, updatedVersion,
   tree, record, callback
@@ -582,7 +606,7 @@ function updateDependent (
       //
       // and use it to update the existing tree for the
       // dependent package.
-      var treeClone = clone(tree)
+      var treeClone = deepClone(tree)
 
       treeClone.push({
         name: updatedName,
@@ -670,7 +694,7 @@ function sequence (directory, callback) {
 
 // Helper Functions
 
-function clone (argument) {
+function deepClone (argument) {
   return JSON.parse(JSON.stringify(argument))
 }
 
@@ -689,7 +713,7 @@ function pushTreeRecords (batch, name, version, tree) {
   })
 }
 
-function changedVersions (oldUpdate, newUpdate) {
+function findChangedVersions (oldUpdate, newUpdate) {
   // Turn the {$version: $object} map into an array.
   return Object.keys(newUpdate.versions)
     .map(function propertyToArrayElement (updatedVersion) {
