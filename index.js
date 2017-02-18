@@ -1,3 +1,37 @@
+// Notes for Readers
+//
+// This code brings a lot of work together in a useful way, but with the
+// exception of some neat streaming flat-file stuff, for performance,
+// all the good ideas are implemented elsewhere.  In particular, you
+// should definitely become fluent in these before diving in:
+//
+// 1.  pull-streams:  leaner, meaner, cleaner streams, implemented with
+//     plain JavaScript functions.  See the README for pull-stream.
+//     This was originally implemented with Node streams, but that
+//     became a mighty pain.  Yes, Node already has a very ingrained
+//     streams implementation, but almost everyone finds a dive into
+//     pull-stream rewarding.
+//
+// 2.  node-semver:  If you've been looking for an excuse to look into
+//     how node-semver satisfies dependency ranges, desugars caret
+//     syntax, and so on, the time is now!  The resolution used here
+//     is a bit more "pure" than npm CLI when multiple dependencies
+//     are involved.
+//
+// 3.  flat package trees:  The follower uses a specific schema to
+//     describe dependencies, how they are resolved, and what they in
+//     turn depend on.  See the README examples for this package and
+//     update-flat-package-tree.  Most of the original, useful thinking
+//     here is in the flat-package-tree packages.
+//
+// 4.  replicate.npmjs.com:  An endpoint for replicating the npm public
+//     registry, using the CouchDB HTTP replication API.  Good folk at
+//     npm have published a tutorial on writing "registry followers"
+//     using the API, but it uses lots of Node stream-based helper
+//     packages that I abandoned for various reasons.  Better to have
+//     a quick look at a response from replicate.npmjs.com, and
+//     possibly the CouchDB API doc.
+
 // Flat Dependency Trees
 var mergeFlatTrees = require('merge-flat-package-trees')
 var sortFlatTree = require('sort-flat-package-tree')
