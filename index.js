@@ -575,7 +575,6 @@ function writeBatch (directory, batch, callback) {
 
     // Create the directory for the file if it doesn't already exist.
     mkdirp(dirname(file), ecb(done, function () {
-
       var value = JSON.stringify(instruction.value)
       /* istanbul ignore else */
       if (instruction.type === 'append') {
