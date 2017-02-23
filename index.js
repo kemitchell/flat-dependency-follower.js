@@ -92,6 +92,80 @@ exports.sink = sink
 exports.versions = versions
 exports.maxSatisfying = findMaxSatisfying
 
+// Overview of Flat-File Storage Scheme
+//
+// The follower stores all its state in flat files within a single
+// provided directory.
+//
+// Whenever a package name appears in a file name, the package name is
+// encoded with `encodeURIComponent`.
+//
+// There are four kinds of data files:
+//
+// 1. ./sequence
+//
+//     Format: JSON Number
+//
+//     Content: last successfully processed update sequence number
+//
+//     The sequence file is overwritten after all other processing for a
+//     given CouchDB update.
+//
+// 2. ./$UPDATE/$name
+//
+//     Format: JSON Object
+//
+//     Content: last successfully processed, pruned CouchDB update
+//              object affecting the package
+//
+//     Storing these enables the follower to compare each new update for
+//     a package with the last update.  The follower need process only
+//     versions that were changed.
+//
+// 3. ./$TREE/$name
+//
+//      Format: Newline-delimited JSON
+//
+//      Content: {version, tree}
+//
+//      Fully resolved flat dependency trees for every known version of
+//      the package, as of the most recent update.  The follower
+//      replaces the lines for each version when dependencies are
+//      updated.
+//
+//      The follower does _not_ sort objects in the file.
+//
+// 4. ./$DEPENDENCY/$dependency-name
+//
+//      Format: Newline-delimited JSON
+//
+//      Content: {range, dependent: {name, version}}
+//
+//      One line for each dependent package version.
+//
+//      The follower does _not_ sort objects in the file.
+//
+// Prior approaches had a number of shortcomings:
+//
+// 1.  They exceeded the filesystem inode limit.
+//
+//     With more than a quarter-million distinct packages in the public
+//     registry and growing, two files per package are doable, but a
+//     file for each version of each package is not.
+//
+// 2.  Too slow to keep up with the registry.
+//
+//     Using streaming formats throughout gives the follower a fighting
+//     chance on a solid-state disk drive.
+//
+// 3.  They consumed too much memory.
+//
+//     Some packages have a staggering number of dependents, or a huge
+//     number of versions, or both.  Any file with more than one record
+//     can potentially exceed the size of available memory.  Again,
+//     stream processing to the rescue.
+
+// Data file and directory name constants.
 var DEPENDENCY = 'dependencies'
 var SEQUENCE = 'sequence'
 var TREE = 'trees'
