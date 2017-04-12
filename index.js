@@ -50,7 +50,6 @@ var split = require('pull-split')
 
 // Control Flow
 var asyncMap = require('async.map')
-var each = require('async.each')
 var eachSeries = require('async-each-series')
 var ecb = require('ecb')
 var parseJSON = require('json-parse-errback')
@@ -234,10 +233,11 @@ function writeUpdate (directory, log, update, callback) {
       readLastUpdate(directory, update.name, done)
     },
 
-    // Identify new and changed versions and process them.
+    // Identify new, changed, and unpublished versions and process them.
     function (last, done) {
-      var changedVersions = findChangedVersions(last, update)
-      var versions = changedVersions
+      var changes = findChangedVersions(last, update)
+      var publishedVersionStrings = changes
+        .published
         .map(function (element) {
           return element.updatedVersion
         })
@@ -245,11 +245,13 @@ function writeUpdate (directory, log, update, callback) {
           return semver.valid(version) !== null
         })
       log.info({
-        versions: versions
+        published: publishedVersionStrings,
+        unpublished: changes.unpublishedVersionStrings
       }, 'changed')
-      eachSeries(changedVersions, function (version, done) {
+      eachSeries(changes.published, function (version, done) {
         writeVersion(
-          directory, log, update.sequence, version, versions,
+          directory, log, update.sequence,
+          version, publishedVersionStrings,
           ecb(done, function () {
             log.info({
               name: version.updatedName,
@@ -264,7 +266,7 @@ function writeUpdate (directory, log, update, callback) {
     // Overwrite the update record for this package, so we can compare
     // it to the next update for this package later.
     function (done) {
-      saveUpdate(directory, update, ecb(done, function () {
+      saveUpdate(directory, update, sequence, ecb(done, function () {
         log.info({
           name: update.name
         }, 'saved update')
@@ -436,7 +438,7 @@ function readLastUpdate (directory, name, callback) {
     if (error) {
       /* istanbul ignore else */
       if (error.code === 'ENOENT') {
-        callback(null, [])
+        callback(null, {versions: []})
       } else {
         callback(error)
       }
@@ -449,13 +451,16 @@ function readLastUpdate (directory, name, callback) {
 }
 
 // Save an update from the registry replication update to disk.
-function saveUpdate (directory, chunk, callback) {
-  var value = Object.keys(chunk.versions).map(function (version) {
-    return {
-      updatedVersion: version,
-      ranges: chunk.versions[version].dependencies
-    }
-  })
+function saveUpdate (directory, chunk, sequence, callback) {
+  var value = {
+    sequence: sequence,
+    versions: Object.keys(chunk.versions).map(function (version) {
+      return {
+        updatedVersion: version,
+        ranges: chunk.versions[version].dependencies
+      }
+    })
+  }
   var file = join(directory, UPDATE, encode(chunk.name))
   mkdirp(dirname(file), ecb(callback, function () {
     fs.writeFile(file, JSON.stringify(value), callback)
@@ -755,7 +760,7 @@ function versions (directory, name, callback) {
       }
     } else {
       parseJSON(buffer, ecb(callback, function (record) {
-        var versions = record.map(function (element) {
+        var versions = record.versions.map(function (element) {
           return element.updatedVersion
         })
         callback(null, versions)
@@ -809,7 +814,8 @@ function pushTreeRecords (batch, name, version, tree, sequence) {
 
 function findChangedVersions (oldUpdate, newUpdate) {
   // Turn the {$version: $object} map into an array.
-  return Object.keys(newUpdate.versions)
+  var returned = {}
+  returned.published = Object.keys(newUpdate.versions)
     .map(function propertyToArrayElement (updatedVersion) {
       return {
         updatedVersion: updatedVersion,
@@ -820,13 +826,21 @@ function findChangedVersions (oldUpdate, newUpdate) {
     // Filter out versions that haven't changed since the last
     // update for this package.
     .filter(function sameAsLastUpdate (newUpdate) {
-      return !oldUpdate.some(function (priorUpdate) {
+      return !oldUpdate.versions.some(function (priorUpdate) {
         return (
           priorUpdate.updatedVersion === newUpdate.updatedVersion &&
           deepEqual(priorUpdate.ranges, newUpdate.ranges)
         )
       })
     })
+  returned.unpublishedVersionStrings = oldUpdate.versions
+    .map(function (version) {
+      return version.updatedVersion
+    })
+    .filter(function notInNewUpdate (version) {
+      return !newUpdate.versions.hasOwnProperty(version)
+    })
+  return returned
 }
 
 function prune (object, keysToKeep) {
