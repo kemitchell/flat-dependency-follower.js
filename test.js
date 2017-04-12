@@ -32,8 +32,19 @@ tape('y@2; y@10; x -> y@*', function (test) {
   testFollower(test, [
     // Lexicographically: 2.0.0 > 10.0.0
     // SemVer:            2.0.0 < 10.0.0
-    {name: 'y', versions: {'2.0.0': {dependencies: {}}}},
-    {name: 'y', versions: {'10.0.0': {dependencies: {}}}},
+    {
+      name: 'y',
+      versions: {
+        '2.0.0': {dependencies: {}}
+      }
+    },
+    {
+      name: 'y',
+      versions: {
+        '2.0.0': {dependencies: {}},
+        '10.0.0': {dependencies: {}}
+      }
+    },
     {name: 'x', versions: {'1.0.0': {dependencies: {y: '*'}}}}
   ], function (directory, done) {
     tree(directory, 'x', '1.0.0', 3, function (error, tree, sequence) {
@@ -82,7 +93,13 @@ tape('w -> x -> y -> z ; new z', function (test) {
     {name: 'y', versions: {'1.0.0': {dependencies: {z: '^1.0.0'}}}},
     {name: 'x', versions: {'1.0.0': {dependencies: {y: '^1.0.0'}}}},
     {name: 'w', versions: {'1.0.0': {dependencies: {x: '^1.0.0'}}}},
-    {name: 'z', versions: {'1.0.1': {dependencies: {}}}}
+    {
+      name: 'z',
+      versions: {
+        '1.0.0': {dependencies: {}},
+        '1.0.1': {dependencies: {}}
+      }
+    }
   ], function (directory, done) {
     tree(directory, 'w', '1.0.0', 5, function (error, tree, sequence) {
       test.ifError(error, 'no error')
@@ -117,7 +134,13 @@ tape('w -> x -> y -> z -> a; new y', function (test) {
     {name: 'y', versions: {'1.0.0': {dependencies: {z: '^1.0.0'}}}},
     {name: 'x', versions: {'1.0.0': {dependencies: {y: '^1.0.0'}}}},
     {name: 'w', versions: {'1.0.0': {dependencies: {x: '^1.0.0'}}}},
-    {name: 'y', versions: {'1.0.1': {dependencies: {z: '^1.0.0'}}}}
+    {
+      name: 'y',
+      versions: {
+        '1.0.0': {dependencies: {z: '^1.0.0'}},
+        '1.0.1': {dependencies: {z: '^1.0.0'}}
+      }
+    }
   ], function (directory, done) {
     tree(directory, 'w', '1.0.0', 6, function (error, tree, sequence) {
       test.ifError(error, 'no error')
@@ -160,7 +183,13 @@ tape('w -> x -> y -> z ; new y', function (test) {
     {name: 'y', versions: {'1.0.0': {dependencies: {z: '^1.0.0'}}}},
     {name: 'x', versions: {'1.0.0': {dependencies: {y: '^1.0.0'}}}},
     {name: 'w', versions: {'1.0.0': {dependencies: {x: '^1.0.0'}}}},
-    {name: 'y', versions: {'1.0.1': {dependencies: {z: '^1.0.0'}}}}
+    {
+      name: 'y',
+      versions: {
+        '1.0.0': {dependencies: {z: '^1.0.0'}},
+        '1.0.1': {dependencies: {z: '^1.0.0'}}
+      }
+    }
   ], function (directory, done) {
     runParallel([
       function (done) {
@@ -279,7 +308,13 @@ tape('y@1.0.0 ; x -> y@^1.0.0 ; y@1.0.1', function (test) {
   testFollower(test, [
     {name: 'y', versions: {'1.0.0': {dependencies: {}}}},
     {name: 'x', versions: {'1.0.0': {dependencies: {y: '^1.0.0'}}}},
-    {name: 'y', versions: {'1.0.1': {dependencies: {}}}}
+    {
+      name: 'y',
+      versions: {
+        '1.0.0': {dependencies: {}},
+        '1.0.1': {dependencies: {}}
+      }
+    }
   ], function (directory, done) {
     runParallel([
       function (done) {
@@ -364,8 +399,20 @@ tape('x@1 -> y@1; x@2 -> y@2', function (test) {
   testFollower(test, [
     {name: 'y', versions: {'1.0.0': {dependencies: {}}}},
     {name: 'x', versions: {'1.0.0': {dependencies: {y: '^1.0.0'}}}},
-    {name: 'y', versions: {'2.0.0': {dependencies: {}}}},
-    {name: 'x', versions: {'2.0.0': {dependencies: {y: '^2.0.0'}}}}
+    {
+      name: 'y',
+      versions: {
+        '1.0.0': {dependencies: {}},
+        '2.0.0': {dependencies: {}}
+      }
+    },
+    {
+      name: 'x',
+      versions: {
+        '1.0.0': {dependencies: {y: '^1.0.0'}},
+        '2.0.0': {dependencies: {y: '^2.0.0'}}
+      }
+    }
   ], function (directory, done) {
     tree(directory, 'x', '2.0.0', 4, function (error, tree, sequence) {
       test.ifError(error, 'no error')
@@ -382,10 +429,27 @@ tape('x@1 -> y@1; x@2 -> y@2', function (test) {
 
 tape('x@1 -> y@1; y@2; unpublish y@2', function (test) {
   testFollower(test, [
-    {name: 'y', versions: {'1.0.0': {dependencies: {}}}},
-    {name: 'x', versions: {'1.0.0': {dependencies: {y: '*'}}}},
-    {name: 'y', versions: {'2.0.0': {dependencies: {}}}},
-    {name: 'y', versions: {'1.0.0': {dependencies: {}}}}
+    {
+      name: 'y',
+      versions: {'1.0.0': {dependencies: {}}}
+    },
+    {
+      name: 'x',
+      versions: {'1.0.0': {dependencies: {y: '*'}}}
+    },
+    {
+      name: 'y',
+      versions: {
+        '1.0.0': {dependencies: {}},
+        '2.0.0': {dependencies: {}}
+      }
+    },
+    {
+      name: 'y',
+      versions: {
+        '1.0.0': {dependencies: {}}
+      }
+    }
   ], function (directory, done) {
     tree(directory, 'x', '1.0.0', 3, function (error, tree, sequence) {
       test.ifError(error, 'no error')
