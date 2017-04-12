@@ -90,6 +90,8 @@ exports.sink = sink
 exports.versions = versions
 exports.maxSatisfying = findMaxSatisfying
 
+// TODO Update comments on file format to mention sequence numbers
+
 // Overview of Flat-File Storage Scheme
 //
 // The follower stores all its state in flat files within a single
@@ -236,7 +238,8 @@ function writeUpdate (directory, log, update, callback) {
     // Identify new, changed, and unpublished versions and process them.
     function (last, done) {
       var changes = findChangedVersions(last, update)
-      var publishedVersionStrings = changes
+      changes.lastUpdateSequence = last.sequence
+      changes.publishedVersionStrings = changes
         .published
         .map(function (element) {
           return element.updatedVersion
@@ -245,13 +248,23 @@ function writeUpdate (directory, log, update, callback) {
           return semver.valid(version) !== null
         })
       log.info({
-        published: publishedVersionStrings,
+        published: changes.publishedVersionStrings,
         unpublished: changes.unpublishedVersionStrings
       }, 'changed')
+      done(null, changes)
+    },
+
+    // TODO: Update files to reflect unpublishes.
+    function (changes, done) {
+      // changes.unpublishedVersionStrings
+      done(null, changes)
+    },
+
+    function (changes, done) {
       eachSeries(changes.published, function (version, done) {
         writeVersion(
           directory, log, update.sequence,
-          version, publishedVersionStrings,
+          version, changes.publishedVersionStrings,
           ecb(done, function () {
             log.info({
               name: version.updatedName,
@@ -266,7 +279,7 @@ function writeUpdate (directory, log, update, callback) {
     // Overwrite the update record for this package, so we can compare
     // it to the next update for this package later.
     function (done) {
-      saveUpdate(directory, update, sequence, ecb(done, function () {
+      saveUpdate(directory, update, ecb(done, function () {
         log.info({
           name: update.name
         }, 'saved update')
@@ -438,7 +451,10 @@ function readLastUpdate (directory, name, callback) {
     if (error) {
       /* istanbul ignore else */
       if (error.code === 'ENOENT') {
-        callback(null, {versions: []})
+        callback(null, {
+          versions: [],
+          sequence: -1
+        })
       } else {
         callback(error)
       }
@@ -451,9 +467,9 @@ function readLastUpdate (directory, name, callback) {
 }
 
 // Save an update from the registry replication update to disk.
-function saveUpdate (directory, chunk, sequence, callback) {
+function saveUpdate (directory, chunk, callback) {
   var value = {
-    sequence: sequence,
+    sequence: chunk.sequence,
     versions: Object.keys(chunk.versions).map(function (version) {
       return {
         updatedVersion: version,
