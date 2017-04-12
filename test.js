@@ -380,6 +380,26 @@ tape('x@1 -> y@1; x@2 -> y@2', function (test) {
   })
 })
 
+tape('x@1 -> y@1; y@2; unpublish y@2', function (test) {
+  testFollower(test, [
+    {name: 'y', versions: {'1.0.0': {dependencies: {}}}},
+    {name: 'x', versions: {'1.0.0': {dependencies: {y: '*'}}}},
+    {name: 'y', versions: {'2.0.0': {dependencies: {}}}},
+    {name: 'y', versions: {'1.0.0': {dependencies: {}}}}
+  ], function (directory, done) {
+    tree(directory, 'x', '1.0.0', 3, function (error, tree, sequence) {
+      test.ifError(error, 'no error')
+      test.equal(sequence, 3, 'sequence is 3')
+      test.deepEqual(
+        tree,
+        [{name: 'y', version: '1.0.0', range: '*', links: []}],
+        'yields tree'
+      )
+      done()
+    })
+  })
+})
+
 tape('versions(existing)', function (test) {
   testFollower(test, [
     {name: 'x', versions: {'1.0.0': {}, '2.0.0': {}}}
