@@ -168,6 +168,9 @@ var SEQUENCE = 'sequence'
 var TREE = 'trees'
 var UPDATE = 'updates'
 
+// The tree property value in tree records for unpublished packages.
+var UNPUBLISHED_TOMBSTONE = 'unpublished'
+
 // A pull-stream sink for consuming update objects from the npm public
 // registry's CouchDB-style replication endpoint.
 function sink (directory, log, callback) {
@@ -308,10 +311,10 @@ function findMaxSatisfying (
 ) {
   pull(
     treesStream(directory, sequence, name),
-    reduce(higherMatch(range), null, ecb(callback, function (max) {
+    reduce(matchesFor(range), [], ecb(callback, function (matches) {
       // If there isn't a match, yield an informative error with
       // structured data about the failed query.
-      if (max === null) {
+      if (matches.length === 0) {
         callback({
           noSatisfying: true,
           dependency: {
@@ -321,6 +324,7 @@ function findMaxSatisfying (
         })
       // Have a tree for a package version that satisfied the range.
       } else {
+        var max = matches[matches.length - 1]
         // Create a new tree with just the top-level package. The new
         // record links to all direct dependencies in the tree.
         var treeWithDependency = [
@@ -354,16 +358,36 @@ function findMaxSatisfying (
   )
 }
 
-function higherMatch (range) {
-  return function (a, b) {
-    try {
-      return (
-        semver.satisfies(b.version, range) &&
-        (a === null || semver.compare(a.version, b.version) === -1)
-      ) ? b : a
-    } catch (error) {
-      return a
+function matchesFor (range) {
+  // This function is backwards---accumulator first, then new
+  // data---because that's what pull-stream's reduce expects.
+  return function (matches, candidate) {
+    var version = candidate.version
+    function sameVersion (priorMatch) {
+      return priorMatch.version === version
     }
+    try {
+      if (semver.satisfies(version, range)) {
+        // If we matched the same version at a prior sequence number,
+        // remove the version at the old sequence number.
+        var alreadyMatchedVersion = matches.some(sameVersion)
+        if (alreadyMatchedVersion) {
+          matches = matches.filter(sameVersion)
+        }
+        // Unless the package was unpublished, add this new record to
+        // the results list and sort it.
+        if (candidate.tree !== UNPUBLISHED_TOMBSTONE) {
+          matches.push(candidate)
+          matches.sort(sortRecords)
+        }
+      }
+      return matches
+    } catch (error) {
+      return matches
+    }
+  }
+  function sortRecords (a, b) {
+    return semver.compare(a.version, b.version)
   }
 }
 
