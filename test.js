@@ -451,9 +451,9 @@ tape('x@1 -> y@1; y@2; unpublish y@2', function (test) {
       }
     }
   ], function (directory, done) {
-    tree(directory, 'x', '1.0.0', 3, function (error, tree, sequence) {
+    tree(directory, 'x', '1.0.0', 4, function (error, tree, sequence) {
       test.ifError(error, 'no error')
-      test.equal(sequence, 3, 'sequence is 3')
+      test.equal(sequence, 4, 'sequence is 4')
       test.deepEqual(
         tree,
         [{name: 'y', version: '1.0.0', range: '*', links: []}],
