@@ -69,7 +69,10 @@ Useful request paths include:
     to the follower.
 
 -  `GET /packages/{name}/{version}` serves a flat dependency tree,
-   if any, as JSON.
+   if any, as JSON, at the latest sequence number.
+
+-  `GET /packages/{name}/{version}/{sequence}` serves a flat dependency
+    tree, if any, as JSON, at the given sequence number.
 
 -  `GET /sequence` serves the server's current sequence number.
 
