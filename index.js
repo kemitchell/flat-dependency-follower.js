@@ -112,10 +112,9 @@ exports.maxSatisfying = findMaxSatisfying
 //
 // 2. ./$UPDATE/$name
 //
-//     Format: JSON Object
+//     Format: Newline-delimited JSON
 //
-//     Content: last successfully processed, pruned CouchDB update
-//              object affecting the package
+//     Content: {sequence, versions: [{updatedVersion, ranges}]}
 //
 //     Storing these enables the follower to compare each new update for
 //     a package with the last update.  The follower need process only
@@ -123,22 +122,22 @@ exports.maxSatisfying = findMaxSatisfying
 //
 // 3. ./$TREE/$name
 //
-//      Format: Newline-delimited JSON
+//     Format: Newline-delimited JSON
 //
-//      Content: {version, tree}
+//     Content: {sequence, version, tree}
 //
-//      Fully resolved flat dependency trees for every known version of
-//      the package, as of the most recent update.  The follower
-//      replaces the lines for each version when dependencies are
-//      updated.
+//     Fully resolved flat dependency trees for every known version of
+//     the package, as of the most recent update.  The follower
+//     replaces the lines for each version when dependencies are
+//     updated.
 //
-//      The follower does _not_ sort objects in the file.
+//     The follower does _not_ sort objects in the file.
 //
 // 4. ./$DEPENDENCY/$dependency-name
 //
 //      Format: Newline-delimited JSON
 //
-//      Content: {range, dependent: {name, version}}
+//      Content: {sequence, range, dependent: {name, version}}
 //
 //      One line for each dependent package version.
 //
