@@ -39,6 +39,8 @@ var updateFlatTree = require('update-flat-package-tree')
 var semver = require('semver')
 
 // Streams
+var asyncMapThrough = require('pull-stream').asyncMap
+var collect = require('pull-stream').collect
 var decodeUTF8 = require('pull-utf8-decoder')
 var defer = require('pull-defer')
 var filter = require('pull-stream').filter
@@ -307,50 +309,43 @@ function writeUpdate (directory, log, update, callback) {
             dependentsStream(
               directory, sequence - 1, update.name, unpublishedVersion
             ),
-            // TODO turn this into a through that emits batch records
-            // TODO pull the through to a writeBatch call
-            function sink (source) {
-              source(null, function next (end, dependentRecord) {
-                if (end === true) {
-                  done(end === true ? null : end)
-                } else {
-                  var dependent = dependentRecord.dependent
-                  // ... pull its last dependency ranges ...
-                  readLastUpdate(
-                    directory, dependent.name,
-                    ecb(done, function (last) {
-                      var ranges = last
-                        .versions
-                        .find(function (x) {
-                          return x.updatedVersion === dependent.version
-                        })
-                        .ranges
-                      // ... and use them to calculate a new tree ...
-                      calculateTreeFor(
-                        directory,
-                        sequence,
-                        dependent.name,
-                        dependent.version,
-                        ranges,
-                        ecb(done, function (tree) {
-                          var batch = []
-                          pushTreeRecords(
-                            batch,
-                            dependent.name, dependent.version,
-                            tree, sequence
-                          )
-                          writeBatch(
-                            directory,
-                            batch,
-                            done
-                          )
-                        })
-                      )
+            asyncMapThrough(function (dependentRecord, done) {
+              var dependent = dependentRecord.dependent
+              // ... pull its last dependency ranges ...
+              readLastUpdate(
+                directory, dependent.name,
+                ecb(done, function (last) {
+                  var ranges = last
+                    .versions
+                    .find(function (x) {
+                      return x.updatedVersion === dependent.version
+                    })
+                    .ranges
+                  // ... and use them to calculate a new tree ...
+                  calculateTreeFor(
+                    directory,
+                    sequence, dependent.name, dependent.version, ranges,
+                    ecb(done, function (tree) {
+                      done(null, {
+                        name: dependent.name,
+                        version: dependent.version,
+                        tree: tree
+                      })
                     })
                   )
-                }
+                })
+              )
+            }),
+            collect(ecb(done, function (array) {
+              var batch = []
+              array.forEach(function (update) {
+                pushTreeRecords(
+                  batch,
+                  update.name, update.version, update.tree, sequence
+                )
               })
-            }
+              writeBatch(directory, batch, done)
+            }))
           )
         },
         done
