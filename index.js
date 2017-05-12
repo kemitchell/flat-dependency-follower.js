@@ -254,10 +254,27 @@ function writeUpdate (directory, log, update, callback) {
       done(null, changes)
     },
 
-    // TODO: Update files to reflect unpublishes.
+    // Append tombstone tree records for unpublished versions.
     function (changes, done) {
-      // changes.unpublishedVersionStrings
-      done(null, changes)
+      var batch = []
+      changes.unpublishedVersionStrings.forEach(function (version) {
+        pushTreeRecords(
+          batch,
+          update.name,
+          version,
+          UNPUBLISHED_TOMBSTONE,
+          update.sequence
+        )
+      })
+      writeBatch(directory, batch, ecb(callback, function () {
+        changes.unpublishedVersionStrings.forEach(function (version) {
+          log.info({
+            name: version.updatedName,
+            version: version.updatedVersion
+          }, 'unpublished')
+        })
+        done(null, changes)
+      }))
     },
 
     function (changes, done) {
