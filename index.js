@@ -775,7 +775,6 @@ function calculateTreeFor (
 
 function writeBatch (directory, batch, callback) {
   eachSeries(batch, function (instruction, done) {
-    // TODO check array arg
     var file = join(directory, instruction.path)
 
     // Create the directory for the file if it doesn't already exist.
