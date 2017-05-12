@@ -322,7 +322,7 @@ function findMaxSatisfying (
       // Have a tree for a package version that satisfied the range.
       } else {
         // Create a new tree with just the top-level package. The new
-        // records links to all direct dependencies in the tree.
+        // record links to all direct dependencies in the tree.
         var treeWithDependency = [
           {
             name: name,
