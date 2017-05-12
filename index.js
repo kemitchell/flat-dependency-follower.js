@@ -292,7 +292,71 @@ function writeUpdate (directory, log, update, callback) {
             done()
           })
         )
-      }, done)
+      }, ecb(done, function () {
+        done(null, changes)
+      }))
+    },
+
+    // Update dependents on unpublished versions.
+    function (changes, done) {
+      var sequence = update.sequence
+      // For each unpublished version...
+      eachSeries(
+        changes.unpublishedVersionStrings,
+        function (unpublishedVersion, done) {
+          pull(
+            // ... and for each dependent ...
+            dependentsStream(
+              directory, sequence - 1, update.name, unpublishedVersion
+            ),
+            // TODO turn this into a through that emits batch records
+            // TODO pull the through to a writeBatch call
+            function sink (source) {
+              source(null, function next (end, dependentRecord) {
+                if (end === true) {
+                  done(end === true ? null : end)
+                } else {
+                  var dependent = dependentRecord.dependent
+                  // ... pull its last dependency ranges ...
+                  readLastUpdate(
+                    directory, dependent.name,
+                    ecb(done, function (last) {
+                      var ranges = last
+                        .versions
+                        .find(function (x) {
+                          return x.updatedVersion === dependent.version
+                        })
+                        .ranges
+                      // ... and use them to calculate a new tree ...
+                      calculateTreeFor(
+                        directory,
+                        sequence,
+                        dependent.name,
+                        dependent.version,
+                        ranges,
+                        ecb(done, function (tree) {
+                          var batch = []
+                          pushTreeRecords(
+                            batch,
+                            dependent.name, dependent.version,
+                            tree, sequence
+                          )
+                          writeBatch(
+                            directory,
+                            batch,
+                            done
+                          )
+                        })
+                      )
+                    })
+                  )
+                }
+              })
+            }
+          )
+        },
+        done
+      )
     },
 
     // Overwrite the update record for this package, so we can compare
@@ -391,7 +455,7 @@ function matchesFor (range) {
         // remove the version at the old sequence number.
         var alreadyMatchedVersion = matches.some(sameVersion)
         if (alreadyMatchedVersion) {
-          matches = matches.filter(sameVersion)
+          matches = matches.filter(not(sameVersion))
         }
         // Unless the package was unpublished, add this new record to
         // the results list and sort it.
@@ -407,6 +471,12 @@ function matchesFor (range) {
   }
   function sortRecords (a, b) {
     return semver.compare(a.version, b.version)
+  }
+}
+
+function not (predicate) {
+  return function (x) {
+    return !predicate(x)
   }
 }
 
@@ -734,7 +804,7 @@ function updateDependent (
   var name = dependent.name
   var version = dependent.version
 
-  // Find the most current tree for the package.
+  // Find the most current tree for the dependent.
   readTree(
     directory, name, version, sequence,
     ecb(callback, function (result) {
