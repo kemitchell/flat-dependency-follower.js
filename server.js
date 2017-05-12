@@ -24,6 +24,9 @@ var log = pino({
     : 'warn'
 })
 
+var NAME = require('./package.json').name
+var VERSION = require('./package.json').version
+
 log.info('start')
 
 var PACKAGE_PATH = new RegExp(
@@ -127,6 +130,8 @@ var server = http.createServer(function (request, response) {
         }
       }
     )
+  } else if (pathname === '/') {
+    response.end(NAME + ' version ' + VERSION)
   } else {
     notFound()
   }
