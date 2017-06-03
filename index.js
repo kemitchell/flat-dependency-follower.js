@@ -136,9 +136,9 @@ exports.maxSatisfying = findMaxSatisfying
 //
 // 4. ./$DEPENDENCY/$dependency-name
 //
-//      Format: Newline-delimited JSON
+//      Format: tab-separated values
 //
-//      Content: {sequence, range, dependent: {name, version}}
+//      Content: sequence, range, dependentName, dependentVersion
 //
 //      One line for each dependent package version.
 //
@@ -488,7 +488,7 @@ function treesStream (directory, sequence, name) {
 // sequence number.
 function dependentsStream (directory, sequence, name, version) {
   var seen = {}
-  return filteredNDJSONStream(
+  return filteredDependencyStream(
     join(directory, DEPENDENCY, encode(name)),
     function (chunk) {
       var dependent = chunk.dependent
@@ -512,6 +512,32 @@ function dependentsStream (directory, sequence, name, version) {
         }
       }
     }
+  )
+}
+
+function filteredDependencyStream (path, predicate) {
+  return pull(
+    readFile(path),
+    decodeUTF8(),
+    split(
+      '\n',
+      false, // Do not map.
+      false, // Do not reverse.
+      true // Skip the last.
+    ),
+    map(function (line) {
+      var split = line.split('\t')
+      return {
+        sequence: parseInt(split[0]),
+        range: split[1],
+        dependent: {
+          name: split[2],
+          version: split[3]
+        }
+      }
+    }),
+    filter(predicate),
+    suppressENOENT
   )
 }
 
@@ -635,14 +661,13 @@ function writeVersion (
           if (range !== null) {
             updatedBatch.push({
               path: join(DEPENDENCY, encode(dependencyName)),
-              value: {
-                sequence: sequence,
-                range: range,
-                dependent: {
-                  name: updatedName,
-                  version: updatedVersion
-                }
-              }
+              format: 'tsv',
+              value: [
+                sequence,
+                range,
+                updatedName,
+                updatedVersion
+              ]
             })
           }
         })
@@ -779,8 +804,14 @@ function writeBatch (directory, batch, callback) {
 
     // Create the directory for the file if it doesn't already exist.
     mkdirp(dirname(file), ecb(done, function () {
-      var value = JSON.stringify(instruction.value)
-      fs.appendFile(file, value + '\n', done)
+      var line = instruction.format === 'tsv'
+        ? instruction.value
+          .map(function (element) {
+            return element.toString()
+          })
+          .join('\t')
+        : JSON.stringify(instruction.value)
+      fs.appendFile(file, line + '\n', done)
     }))
   }, callback)
 }
