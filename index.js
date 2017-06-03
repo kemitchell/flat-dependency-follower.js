@@ -123,9 +123,9 @@ exports.maxSatisfying = findMaxSatisfying
 //
 // 3. ./$TREE/$name
 //
-//     Format: Newline-delimited JSON
+//     Format: tab-separated values
 //
-//     Content: {sequence, version, tree}
+//     Content: sequence, version, JSON.stringify(tree)
 //
 //     Fully resolved flat dependency trees for every known version of
 //     the package, as of the most recent update.  The follower
@@ -475,9 +475,16 @@ function not (predicate) {
 
 // Find all stored trees for a package at or before a given sequence.
 function treesStream (directory, sequence, name) {
-  return filteredNDJSONStream(
+  return filteredTSVStream(
     join(directory, TREE, encode(name)),
-    function (chunk) {
+    function parse (values) {
+      return {
+        sequence: parseInt(values[0]),
+        version: values[1],
+        tree: JSON.parse(values[2])
+      }
+    },
+    function filter (chunk) {
       return chunk.sequence <= sequence
     }
   )
@@ -488,9 +495,19 @@ function treesStream (directory, sequence, name) {
 // sequence number.
 function dependentsStream (directory, sequence, name, version) {
   var seen = {}
-  return filteredDependencyStream(
+  return filteredTSVStream(
     join(directory, DEPENDENCY, encode(name)),
-    function (chunk) {
+    function parse (values) {
+      return {
+        sequence: parseInt(values[0]),
+        range: values[1],
+        dependent: {
+          name: values[2],
+          version: values[3]
+        }
+      }
+    },
+    function filter (chunk) {
       var dependent = chunk.dependent
       if (!seen.hasOwnProperty(dependent.name)) {
         seen[dependent.name] = []
@@ -515,7 +532,7 @@ function dependentsStream (directory, sequence, name, version) {
   )
 }
 
-function filteredDependencyStream (path, predicate) {
+function filteredTSVStream (path, parse, predicate) {
   return pull(
     readFile(path),
     decodeUTF8(),
@@ -526,32 +543,8 @@ function filteredDependencyStream (path, predicate) {
       true // Skip the last.
     ),
     map(function (line) {
-      var split = line.split('\t')
-      return {
-        sequence: parseInt(split[0]),
-        range: split[1],
-        dependent: {
-          name: split[2],
-          version: split[3]
-        }
-      }
+      return parse(line.split('\t'))
     }),
-    filter(predicate),
-    suppressENOENT
-  )
-}
-
-function filteredNDJSONStream (path, predicate) {
-  return pull(
-    readFile(path),
-    decodeUTF8(),
-    split(
-      '\n',
-      false, // Do not map.
-      false, // Do not reverse.
-      true // Skip the last.
-    ),
-    map(JSON.parse),
     filter(predicate),
     suppressENOENT
   )
@@ -663,7 +656,7 @@ function writeVersion (
               path: join(DEPENDENCY, encode(dependencyName)),
               format: 'tsv',
               value: [
-                sequence,
+                sequence.toString(),
                 range,
                 updatedName,
                 updatedVersion
@@ -953,11 +946,12 @@ function validName (argument) {
 function pushTreeRecords (batch, name, version, tree, sequence) {
   batch.push({
     path: join(TREE, encode(name)),
-    value: {
-      version: version,
-      sequence: sequence,
-      tree: tree
-    }
+    format: 'tsv',
+    value: [
+      sequence,
+      version,
+      JSON.stringify(tree)
+    ]
   })
 }
 
