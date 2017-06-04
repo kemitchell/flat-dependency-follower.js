@@ -54,7 +54,6 @@ var split = require('pull-split')
 var asyncMap = require('async.map')
 var eachSeries = require('async-each-series')
 var ecb = require('ecb')
-var parseJSON = require('json-parse-errback')
 var runWaterfall = require('run-waterfall')
 
 // Miscellany
@@ -113,9 +112,9 @@ exports.maxSatisfying = findMaxSatisfying
 //
 // 2. ./$UPDATE/$name
 //
-//     Format: Newline-delimited JSON
+//     Format: tab-separated values
 //
-//     Content: {sequence, versions: [{updatedVersion, ranges}]}
+//     Content: sequence, JSON.stringify([{updatedVersion, ranges}])
 //
 //     Storing these enables the follower to compare each new update for
 //     a package with the last update.  The follower need process only
@@ -581,27 +580,36 @@ function readLastUpdate (directory, name, callback) {
         callback(error)
       }
     } else {
-      parseJSON(buffer, ecb(callback, function (object) {
-        callback(null, object)
-      }))
+      var split = buffer.toString().split('\t')
+      callback(null, {
+        sequence: parseInt(split[0]),
+        versions: JSON.parse(split[1]).map(function (element) {
+          return {
+            updatedVersion: element[0],
+            ranges: element[1]
+          }
+        })
+      })
     }
   })
 }
 
 // Save an update from the registry replication update to disk.
 function saveUpdate (directory, chunk, callback) {
-  var value = {
-    sequence: chunk.sequence,
-    versions: Object.keys(chunk.versions).map(function (version) {
-      return {
-        updatedVersion: version,
-        ranges: chunk.versions[version].dependencies
-      }
-    })
-  }
+  var value = (
+    chunk.sequence.toString() + '\t' +
+    JSON.stringify(
+      Object.keys(chunk.versions).map(function (version) {
+        return [
+          version,
+          chunk.versions[version].dependencies
+        ]
+      })
+    )
+  )
   var file = join(directory, UPDATE, encode(chunk.name))
   mkdirp(dirname(file), ecb(callback, function () {
-    fs.writeFile(file, JSON.stringify(value), callback)
+    fs.writeFile(file, value, callback)
   }))
 }
 
@@ -901,12 +909,11 @@ function versions (directory, name, callback) {
         callback(error)
       }
     } else {
-      parseJSON(buffer, ecb(callback, function (record) {
-        var versions = record.versions.map(function (element) {
-          return element.updatedVersion
-        })
-        callback(null, versions)
-      }))
+      var split = buffer.toString().split('\t')
+      var versions = JSON.parse(split[1]).map(function (element) {
+        return element[0]
+      })
+      callback(null, versions)
     }
   })
 }
