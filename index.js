@@ -219,6 +219,7 @@ function removeUnnecessaryProperties (update) {
   var doc = update.doc
   prune(doc, ['versions', 'name'])
   var versions = doc.versions
+  /* istanbul ignore else */
   if (versions) {
     Object.keys(versions).forEach(function (version) {
       prune(versions[version], 'dependencies')
